@@ -7,7 +7,7 @@
 **VLA-Trace** studies VLA models as evolving, controllable systems rather than opaque end-to-end policies. It builds a progressive evidence chain from **representation dynamics**, to **causal control attribution**, to **closed-loop behavioral manifestation**.
 
 <p align="center">
-  <img src="assets/overview.png" alt="VLA-Trace overview" width="100%"/>
+  <img src="overview.png" alt="VLA-Trace overview" width="100%"/>
 </p>
 
 Modern VLA models inherit powerful vision-language priors, but policy learning can reshape those priors in subtle ways. VLA-Trace asks where multimodal knowledge is preserved, which pathways are actually used for action decoding, and when visually grounded behavior still fails to follow fine-grained semantic changes.
