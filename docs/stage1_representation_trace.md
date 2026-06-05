@@ -11,7 +11,7 @@ Public core:
 - `vla_trace.representations.drift`: config-facing report helpers used by the CLI.
 
 Layer-wise checkpoint-drift reports include `matched_layer_summary` for the
-paper-style view table over `vision_pooled`, `text_pooled`, and `joint_pooled`.
+publication-style view table over `vision_pooled`, `text_pooled`, and `joint_pooled`.
 
 The stable input is a saved bank:
 

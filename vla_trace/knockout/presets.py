@@ -1,4 +1,4 @@
-"""Paper-faithful Stage 2 knockout job manifests."""
+"""Public Stage 2 knockout job manifest presets."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from vla_trace.io.registry import DEFAULT_NUM_LAYERS, normalize_dataset, normali
 from vla_trace.knockout.specs import expand_layer_window
 
 
-def build_paper_0512_knockout_manifest(
+def build_standard_knockout_manifest(
     *,
     model: str,
     dataset: str,
@@ -19,11 +19,11 @@ def build_paper_0512_knockout_manifest(
     num_layers: int | None = None,
     trials: int | None = None,
 ) -> dict[str, Any]:
-    """Build the layerwise/all-layer job matrix used by the paper pipeline.
+    """Build the standard layerwise/all-layer knockout job matrix.
 
-    The returned manifest mirrors the 0512 scripts, but contains only portable
-    job metadata and relative run tags. Users wire each job into their local
-    LIBERO evaluator with their own checkpoint/data paths.
+    The returned manifest contains only portable job metadata and relative run
+    tags. Users wire each job into their local LIBERO evaluator with their own
+    checkpoint/data paths.
     """
     family = normalize_model(model)
     dataset_name = normalize_dataset(dataset)
@@ -62,7 +62,7 @@ def build_paper_0512_knockout_manifest(
         )
     manifest = {
         "status": "ok",
-        "preset": "paper_0512",
+        "preset": "standard_layerwise",
         "model": family,
         "dataset": dataset_name,
         "num_layers": layers_n,
@@ -118,7 +118,7 @@ def _layerwise_settings(family: str) -> list[dict[str, Any]]:
                 "prefill_no_vl__generation_no_image",
             ),
         ]
-    raise ValueError(f"Unsupported paper knockout family: {family}")
+    raise ValueError(f"Unsupported knockout family: {family}")
 
 
 def _all_layer_settings(family: str) -> list[dict[str, Any]]:
@@ -154,7 +154,7 @@ def _all_layer_settings(family: str) -> list[dict[str, Any]]:
                 "prefill_no_vl__generation_no_image",
             ),
         ]
-    raise ValueError(f"Unsupported paper knockout family: {family}")
+    raise ValueError(f"Unsupported knockout family: {family}")
 
 
 def _job(mode: str, phase: str, text_scope: str, suffix: str) -> dict[str, Any]:

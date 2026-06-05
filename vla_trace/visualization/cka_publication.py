@@ -1,4 +1,4 @@
-"""Publication-style CKA panels adapted from the VLA-Trace paper scripts."""
+"""Publication-style CKA panels for VLA-Trace reports."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def plot_cka_publication(
     datasets: tuple[str, ...] = DATASETS,
     models: tuple[str, ...] = ("pi05", "openvla"),
 ) -> list[Path]:
-    """Draw paper-style CKA panels from explicit report paths.
+    """Draw publication-style CKA panels from explicit report paths.
 
     `reports` uses keys such as `pi05:libero_10:alignment`,
     `openvla:libero_10:alignment`, and `openvla:libero_10:drift`.

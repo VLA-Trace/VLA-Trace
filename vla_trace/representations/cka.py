@@ -95,7 +95,7 @@ def matched_layer_checkpoint_drift_summary(
 ) -> dict[str, Any]:
     """Summarize matched-layer CKA drift across pooled views.
 
-    This mirrors the paper-style checkpoint drift table: each target checkpoint
+    This mirrors the publication-style checkpoint drift table: each target checkpoint
     is compared with a reference checkpoint at matched layer indices, then the
     per-layer CKA scores are averaged for each modality view.
     """

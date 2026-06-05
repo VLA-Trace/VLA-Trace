@@ -72,7 +72,7 @@ def export_libero_manifest(
 ) -> dict[str, Any]:
     """Export CKA-ready image samples and a manifest from a LIBERO RLDS dataset.
 
-    This mirrors the paper extraction path while keeping the dependency
+    This mirrors the manuscript extraction path while keeping the dependency
     optional. Users install LIBERO/VLM4VLA-compatible RLDS support locally and
     pass their own dataset root at runtime.
     """

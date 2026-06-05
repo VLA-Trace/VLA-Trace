@@ -25,6 +25,7 @@ from vla_trace.visualization.style import (
 
 LAYER_RE = re.compile(r"layer(?P<layer>\d+)(?:_w(?P<window>\d+))?")
 DATASET_RE = re.compile(r"libero_(?:10|goal|object|spatial)")
+SOURCE_GROUP_RE = re.compile(r"(?:^|[_-])(?:run|release)?[_-]?\d{3,8}(?:$|[_-])")
 MODEL_NAMES = ("openvla_oft", "openvla", "pi05")
 OFT_SETTING_ALIASES = {
     "drop_newline_only": "generation_drop_newline",
@@ -162,10 +163,9 @@ def plot_knockout_line_grid(
     protocol: str = "window7",
     source_data_dir: str | Path | None = None,
 ) -> list[Path]:
-    """Draw paper-style layerwise knockout line grids.
+    """Draw publication-style layerwise knockout line grids.
 
-    This ports the figure logic from the paper script while keeping all paths
-    explicit. Users may pass either the paper source-data CSVs or raw result
+    This keeps all paths explicit. Users may pass either publication source-data CSVs or raw result
     JSON directories accepted by `plot-knockout`.
     """
     if selected_csv:
@@ -427,12 +427,12 @@ def _infer_oft_setting(path: Path, layer: int | None, window: int | None) -> str
     return f"openvla_oft_all_layers_{raw}"
 
 
-def _infer_source_batch(path: Path) -> str:
+def _infer_source_group(path: Path) -> str:
     for part in path.parts:
         if "knockout" in part:
             return part
     for part in path.parts:
-        if part.startswith(("042", "050", "051", "052")):
+        if SOURCE_GROUP_RE.search(part):
             return part
     return ""
 
@@ -633,7 +633,7 @@ def _line_rows_from_results(results: list[KnockoutResult]) -> list[dict[str, Any
             {
                 "path": result.path,
                 "source_root": "",
-                "source_batch": _infer_source_batch(Path(result.path)),
+                "source_group": _infer_source_group(Path(result.path)),
                 "source_priority": 0,
                 "model": model,
                 "dataset": result.dataset,

@@ -194,9 +194,9 @@ def _cmd_knockout(args: argparse.Namespace) -> int:
 
 
 def _cmd_knockout_sweep(args: argparse.Namespace) -> int:
-    from vla_trace.knockout.paper import build_paper_0512_knockout_manifest
+    from vla_trace.knockout.presets import build_standard_knockout_manifest
 
-    manifest = build_paper_0512_knockout_manifest(
+    manifest = build_standard_knockout_manifest(
         model=args.model,
         dataset=args.dataset,
         output_path=args.output,
@@ -567,7 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
     ko_p.add_argument("--print-config", action="store_true", help="Print resolved config and exit")
     ko_p.set_defaults(func=_cmd_knockout)
 
-    ko_sweep_p = sub.add_parser("knockout-sweep", help="Build paper-0512 knockout job manifests")
+    ko_sweep_p = sub.add_parser("knockout-sweep", help="Build standard layerwise knockout job manifests")
     ko_sweep_p.add_argument("--model", required=True, metavar="{OpenVLA,pi0.5}", help=MODEL_HELP)
     ko_sweep_p.add_argument("--dataset", required=True, metavar="{libero_10,libero_goal,libero_object,libero_spatial}", help=DATASET_HELP)
     ko_sweep_p.add_argument("--window-size", type=int, default=5, help="Layer window size, e.g. 3 or 5")
@@ -583,7 +583,7 @@ def build_parser() -> argparse.ArgumentParser:
     plot_cka_p.add_argument("--title", help="Optional figure title")
     plot_cka_p.set_defaults(func=_cmd_plot_cka)
 
-    plot_cka_pub_p = sub.add_parser("plot-cka-publication", help="Plot paper-style multi-panel CKA figures")
+    plot_cka_pub_p = sub.add_parser("plot-cka-publication", help="Plot publication-style multi-panel CKA figures")
     plot_cka_pub_p.add_argument("--report", action="append", default=[], metavar="KEY=PATH", help="Report map entry such as openvla:libero_10:alignment=path.json")
     plot_cka_pub_p.add_argument("--output-dir", required=True, help="Directory for publication CKA figures")
     plot_cka_pub_p.add_argument("--datasets", help="Comma-separated datasets, e.g. libero_10,libero_goal")
@@ -600,10 +600,10 @@ def build_parser() -> argparse.ArgumentParser:
     plot_ko_p.add_argument("--title", help="Optional figure title")
     plot_ko_p.set_defaults(func=_cmd_plot_knockout)
 
-    plot_ko_line_p = sub.add_parser("plot-knockout-line", help="Plot paper-style layerwise knockout line grids")
+    plot_ko_line_p = sub.add_parser("plot-knockout-line", help="Plot publication-style layerwise knockout line grids")
     plot_ko_line_p.add_argument("inputs", nargs="*", help="Result JSON files/directories. Omit when using --selected-csv.")
-    plot_ko_line_p.add_argument("--selected-csv", help="Paper source-data CSV main_layerwise_selected.csv")
-    plot_ko_line_p.add_argument("--baseline-csv", help="Paper source-data CSV baselines.csv")
+    plot_ko_line_p.add_argument("--selected-csv", help="Source-data CSV main_layerwise_selected.csv")
+    plot_ko_line_p.add_argument("--baseline-csv", help="Source-data CSV baselines.csv")
     plot_ko_line_p.add_argument("--output-dir", required=True, help="Directory for line-grid PNG/PDF/SVG outputs")
     plot_ko_line_p.add_argument("--source-data-dir", help="Optional directory for normalized plotted CSV outputs")
     plot_ko_line_p.add_argument("--model", help="Optional model filter, e.g. OpenVLA or pi0.5")

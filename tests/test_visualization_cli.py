@@ -218,13 +218,13 @@ def test_knockout_parser_keeps_legacy_path_inference(tmp_path):
     assert rows[0].window == 7
 
 
-def test_knockout_parser_handles_paper_oft_legacy_paths(tmp_path):
+def test_knockout_parser_handles_oft_legacy_paths(tmp_path):
     result_dir = (
         tmp_path
         / "eval"
         / "logs"
         / "oft"
-        / "oft_knockout_layerwise_0523"
+        / "oft_knockout_layerwise_release"
         / "libero_object"
         / "layerwise"
         / "no_text_full"
@@ -245,7 +245,7 @@ def test_knockout_parser_handles_paper_oft_legacy_paths(tmp_path):
     assert rows[0].window == 7
 
 
-def test_plot_knockout_line_from_raw_json_exports_paper_schema_columns(tmp_path):
+def test_plot_knockout_line_from_raw_json_exports_public_schema_columns(tmp_path):
     root = tmp_path / "openvla" / "libero_10" / "trials20" / "openvla_layerwise_generation_no_image_window7"
     for layer, success in [(0, 10), (8, 5)]:
         result_dir = root / f"layer{layer}_w7-centercrop"
@@ -274,7 +274,7 @@ def test_plot_knockout_line_from_raw_json_exports_paper_schema_columns(tmp_path)
 
     header = (source_dir / "main_line_layerwise_selected.csv").read_text(encoding="utf-8").splitlines()[0]
     for column in (
-        "source_batch",
+        "source_group",
         "protocol",
         "crop",
         "success_rate_fraction",
@@ -306,9 +306,9 @@ def test_cli_plot_attention_iou_csv(tmp_path):
     assert figure.exists()
 
 
-def test_cli_plot_attention_accepts_paper_source_csv(tmp_path):
-    csv_path = tmp_path / "paper_attention_iou.csv"
-    figure = tmp_path / "paper_attention_iou.png"
+def test_cli_plot_attention_accepts_publication_source_csv(tmp_path):
+    csv_path = tmp_path / "publication_attention_iou.csv"
+    figure = tmp_path / "publication_attention_iou.png"
     csv_path.write_text(
         "\n".join(
             [

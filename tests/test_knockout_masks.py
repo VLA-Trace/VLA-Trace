@@ -187,12 +187,12 @@ token_layout:
     assert payload["mask"]["values"][0][payload["mask"]["shape"][1] - 1][0] == -1.0e9
 
 
-def test_pi05_token_order_can_match_paper_or_adapter_layout() -> None:
-    paper = make_pi05_partitions(visual_tokens=2, text_tokens=3, action_tokens=1)
+def test_pi05_token_order_can_match_default_or_adapter_layout() -> None:
+    default = make_pi05_partitions(visual_tokens=2, text_tokens=3, action_tokens=1)
     exported = make_pi05_partitions(visual_tokens=2, text_tokens=3, action_tokens=1, token_order="visual,text,action")
 
-    assert paper.text.start == 0
-    assert paper.visual.start == 3
+    assert default.text.start == 0
+    assert default.visual.start == 3
     assert exported.visual.start == 0
     assert exported.text.start == 2
 
@@ -327,7 +327,7 @@ def test_directional_knockout_blocks_only_requested_route() -> None:
     assert mask.at(0, partitions.action.start, partitions.visual.start) == 0.0
 
 
-def test_knockout_sweep_paper_0512_manifest(tmp_path) -> None:
+def test_knockout_sweep_standard_manifest(tmp_path) -> None:
     out = tmp_path / "sweep.json"
 
     assert main(
@@ -347,7 +347,7 @@ def test_knockout_sweep_paper_0512_manifest(tmp_path) -> None:
     ) == 0
 
     payload = json.loads(out.read_text(encoding="utf-8"))
-    assert payload["preset"] == "paper_0512"
+    assert payload["preset"] == "standard_layerwise"
     assert payload["n_jobs"] == 19
     tags = [job["tag"] for job in payload["jobs"]]
     assert any("pi05_layerwise_prefill_no_vl_window3/layer0_w3" in tag for tag in tags)

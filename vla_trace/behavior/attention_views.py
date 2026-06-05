@@ -16,7 +16,7 @@ def extract_attention_views(
     action_span: slice,
     normalize_rows: bool = True,
 ) -> dict[str, np.ndarray]:
-    """Extract paper qualitative attention views from raw attention tensors.
+    """Extract qualitative attention views from raw attention tensors.
 
     Accepted shapes are `[layers, heads, query, key]`, `[heads, query, key]`,
     or `[batch, layers, heads, query, key]`. The returned arrays are directly

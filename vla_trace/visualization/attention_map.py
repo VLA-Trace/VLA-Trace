@@ -25,7 +25,7 @@ def plot_attention_map(
     """Plot a saved 1D or 2D attention artifact as bars, lines, or a heatmap.
 
     Higher-rank tensors are averaged over leading dimensions. This supports
-    common paper diagnostics such as action-to-text bars, token-wise
+    common VLA-Trace diagnostics such as action-to-text bars, token-wise
     text-to-image matrices, and layer-wise modality summaries.
     """
     values = _reduce_attention(_load_array(array_path, key), keep_last_dims=keep_last_dims)

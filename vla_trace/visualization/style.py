@@ -53,7 +53,7 @@ def apply_style(plt: Any) -> None:
 
 
 def apply_publication_style(plt: Any) -> None:
-    """Apply the paper plotting contract used by the VLA-Trace figures."""
+    """Apply the publication plotting contract used by the VLA-Trace figures."""
     plt.rcParams.update(
         {
             "font.family": "sans-serif",

@@ -45,7 +45,7 @@ def make_pi05_partitions(
     """Build pi0.5 partitions.
 
     `token_order` lets adapters match the model's actual packed sequence. The
-    public default follows the paper prefill matrix convention. If an adapter
+    public default follows the VLA-Trace prefill matrix convention. If an adapter
     exports a visual-first packed sequence, pass `visual,text,action`.
     """
     sizes = {
