@@ -625,6 +625,25 @@ vla-trace cka configs/experiments/openvla_libero_cka.yaml \
 
 ### Stage 2 Knockout Details
 
+`knockout` means masking selected attention routes during model execution to
+measure whether a modality path is causally needed for successful actions.
+`knockout-sweep` is not the rollout itself. It writes a portable JSON manifest
+containing many knockout jobs, for example every layer-window setting plus
+all-layer baselines. The usual workflow is:
+
+```text
+choose setting -> build/inspect knockout spec -> run LIBERO rollouts with that spec -> plot success curves
+```
+
+Command roles:
+
+| Command | Role | Output |
+| --- | --- | --- |
+| `vla-trace knockout` | Build one blocking spec/mask for one setting | `mask.json` |
+| `vla-trace knockout-sweep` | Build many layer-wise/all-layer jobs | `sweep.json` |
+| `vla-trace eval-libero` | Run LIBERO with a single setting or sweep job | success-rate result JSONs |
+| `vla-trace plot-knockout-line` | Draw layer-wise vulnerability curves | PNG/PDF/SVG figures |
+
 Print a resolved knockout config:
 
 ```bash
@@ -728,6 +747,86 @@ vla-trace knockout --model OpenVLA --dataset libero_spatial \
   --output runs/openvla_image_to_action_directional/mask.json
 ```
 
+#### Run A Single Knockout Experiment
+
+Use this when you want to test one setting, such as “block image tokens during
+generation for all layers”.
+
+1. Inspect or save the blocking spec:
+
+```bash
+vla-trace knockout \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --phase generation \
+  --mode no_image \
+  --layers all \
+  --output runs/openvla_libero10_generation_no_image_all_layers/mask.json
+```
+
+2. Dry-run the LIBERO rollout plan:
+
+```bash
+vla-trace eval-libero \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --model-path checkpoints/openvla \
+  --data-root datasets/LIBERO \
+  --phase generation \
+  --mode no_image \
+  --layers all \
+  --task-ids 0 \
+  --num-trials-per-task 2 \
+  --dry-run \
+  --print-plan
+```
+
+3. Run the real rollout with your adapter:
+
+```bash
+vla-trace eval-libero \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --model-path checkpoints/openvla \
+  --data-root datasets/LIBERO \
+  --adapter-factory my_openvla_policy:create_policy \
+  --phase generation \
+  --mode no_image \
+  --layers all \
+  --task-ids 0,1,2,3,4,5,6,7,8,9 \
+  --num-trials-per-task 20 \
+  --output-dir runs/openvla_libero10_generation_no_image_all_layers_eval
+```
+
+4. Plot the single-setting result:
+
+```bash
+vla-trace plot-knockout \
+  runs/openvla_libero10_generation_no_image_all_layers_eval \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --output figures/openvla_libero10_generation_no_image_all_layers.png
+```
+
+`eval-libero` passes this dictionary to your adapter:
+
+```json
+{
+  "mode": "no_image",
+  "knockout_layers": "all",
+  "direction": null,
+  "knockout_phase": "generation",
+  "text_knockout_scope": "all",
+  "family": "openvla"
+}
+```
+
+Your policy adapter should either consume `request.knockout_config` in its
+factory or implement `configure_knockout(config)`. During `predict_action`, the
+adapter applies the mask inside the model attention implementation.
+
+#### Run A Layer-Wise Knockout Sweep
+
 Build the standard layer/window job manifest without copying local shell paths:
 
 ```bash
@@ -745,6 +844,15 @@ vla-trace knockout-sweep \
   --trials 50 \
   --output runs/pi05_libero_goal_knockout_standard_sweep.json
 ```
+
+What the sweep contains:
+
+- For OpenVLA: generation `no_image`, generation `no_text`, prefill
+  `no_image`, combined prefill+generation settings, plus all-layer baselines.
+- For pi0.5: prefill `no_vl`, generation `no_image`, generation `no_text`,
+  combined prefill+generation settings, plus all-layer baselines.
+- For each layer center, `layers` is expanded from `--window-size`. With
+  `--window-size 7`, center layer 16 blocks layers 13 through 19.
 
 Each manifest job records `mode`, `phase`, `text_scope`, `layers`, `tag`, and
 `setting`. `eval-libero` can consume the manifest directly:
@@ -775,6 +883,21 @@ vla-trace eval-libero \
   --output-dir runs/mock_knockout_eval
 ```
 
+Run the full sweep by omitting `--job-index`, `--job-tag`, and `--max-jobs`:
+
+```bash
+vla-trace eval-libero \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --model-path checkpoints/openvla \
+  --data-root datasets/LIBERO \
+  --adapter-factory my_openvla_policy:create_policy \
+  --knockout-manifest runs/openvla_libero10_knockout_standard_sweep.json \
+  --task-ids 0,1,2,3,4,5,6,7,8,9 \
+  --num-trials-per-task 20 \
+  --output-dir runs/openvla_libero10_knockout_eval
+```
+
 The output JSON is accepted by `plot-knockout` and `plot-knockout-line`:
 
 ```bash
@@ -792,6 +915,23 @@ vla-trace plot-knockout-line runs/openvla_libero10_knockout_eval \
 This replaces local shell wrappers such as private `run_libero_eval.py`
 launchers: the repository stores portable JSON job metadata, while users pass
 their own checkpoint, data root, adapter, and cluster launcher at runtime.
+
+For long sweeps on a cluster, split by manifest job:
+
+```bash
+# Example: launch one array task per job index.
+vla-trace eval-libero \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --model-path checkpoints/openvla \
+  --data-root datasets/LIBERO \
+  --adapter-factory my_openvla_policy:create_policy \
+  --knockout-manifest runs/openvla_libero10_knockout_standard_sweep.json \
+  --job-index ${JOB_INDEX} \
+  --task-ids 0,1,2,3,4,5,6,7,8,9 \
+  --num-trials-per-task 20 \
+  --output-dir runs/openvla_libero10_knockout_eval
+```
 
 `--text-scope` selects which text-side keys are blocked for `no_text` and
 `no_vl` settings:
