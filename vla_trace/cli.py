@@ -208,6 +208,153 @@ def _cmd_knockout_sweep(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_eval_libero(args: argparse.Namespace) -> int:
+    from vla_trace.evaluation.libero import (
+        build_libero_eval_plan,
+        resolve_knockout_config_for_eval,
+        run_libero_evaluation,
+        setting_name_from_knockout,
+    )
+
+    cfg = load_config(args.config) if args.config else {}
+    model = _infer_model_shortcut(args.model or cfg.get("family") or cfg.get("model", "OpenVLA"))
+    dataset = _infer_dataset_shortcut(
+        args.dataset or cfg.get("dataset") or cfg.get("suite") or cfg.get("benchmark", "libero_10")
+    )
+    output_dir = args.output_dir or cfg.get("output_dir") or f"runs/{model}_{dataset}_eval"
+
+    if args.knockout_manifest:
+        jobs = _select_knockout_manifest_jobs(
+            args.knockout_manifest,
+            job_index=args.job_index,
+            job_tag=args.job_tag,
+            max_jobs=args.max_jobs,
+        )
+        results = []
+        for idx, job in enumerate(jobs):
+            knockout_config = _knockout_config_from_manifest_job(model, job, resolve_knockout_config_for_eval)
+            setting = str(job.get("setting") or job.get("setting_suffix") or setting_name_from_knockout(knockout_config))
+            tag = str(job.get("tag") or f"job_{idx:04d}_{setting}")
+            request = _build_eval_request(
+                args,
+                cfg,
+                model=model,
+                dataset=dataset,
+                output_dir=str(Path(output_dir) / tag),
+                knockout_config=knockout_config,
+                setting=setting,
+                result_name=args.result_name,
+            )
+            results.append(build_libero_eval_plan(request) if args.print_plan else run_libero_evaluation(request))
+        payload = {
+            "status": "planned" if args.print_plan else "ok",
+            "command": "eval-libero",
+            "manifest": args.knockout_manifest,
+            "n_jobs": len(jobs),
+            "results": results,
+        }
+        if args.print_plan:
+            _print_json(payload)
+        elif args.output:
+            write_json(args.output, payload)
+            print(str(args.output))
+        else:
+            for result in results:
+                print(str(result["result_path"]))
+        return 0
+
+    knockout_layers = _resolve_eval_knockout_layers(args, cfg)
+    knockout_config = resolve_knockout_config_for_eval(
+        model=model,
+        phase=args.phase or str(cfg.get("phase", "generation")),
+        mode=args.mode or str(cfg.get("mode", "baseline")),
+        layers=knockout_layers,
+        direction=args.direction or cfg.get("direction"),
+        text_scope=args.text_scope or str(cfg.get("text_scope", "all")),
+        prefill_mode=args.prefill_mode or cfg.get("prefill_mode"),
+        generation_mode=args.generation_mode or cfg.get("generation_mode"),
+    )
+    setting = args.setting or str(cfg.get("setting") or setting_name_from_knockout(knockout_config))
+    if isinstance(knockout_config, dict):
+        if args.center_layer is not None:
+            knockout_config["center_layer"] = args.center_layer
+        if args.window_size is not None:
+            knockout_config["window_size"] = args.window_size
+    request = _build_eval_request(
+        args,
+        cfg,
+        model=model,
+        dataset=dataset,
+        output_dir=str(output_dir),
+        knockout_config=knockout_config,
+        setting=setting,
+        result_name=args.result_name or cfg.get("result_name"),
+    )
+    if args.print_plan:
+        _print_json(build_libero_eval_plan(request))
+        return 0
+    result = run_libero_evaluation(request)
+    if args.output:
+        write_json(args.output, result)
+        print(str(args.output))
+    else:
+        print(str(result["result_path"]))
+    return 0
+
+
+def _build_eval_request(
+    args: argparse.Namespace,
+    cfg: dict[str, Any],
+    *,
+    model: str,
+    dataset: str,
+    output_dir: str,
+    knockout_config: dict[str, Any] | None,
+    setting: str,
+    result_name: str | None,
+) -> Any:
+    from vla_trace.evaluation.libero import LiberoEvalRequest
+
+    return LiberoEvalRequest(
+        model=model,
+        dataset=dataset,
+        output_dir=output_dir,
+        model_path=args.model_path or cfg.get("model_path"),
+        data_root=args.data_root or cfg.get("data_root"),
+        model_config=args.model_config or cfg.get("model_config"),
+        benchmark_config=args.benchmark_config or cfg.get("benchmark_config"),
+        config_path=args.config_path or cfg.get("config_path"),
+        adapter_factory=args.adapter_factory or cfg.get("adapter_factory"),
+        vlm4vla_root=args.vlm4vla_root or cfg.get("vlm4vla_root"),
+        openpi_root=args.openpi_root or cfg.get("openpi_root"),
+        openpi_config_name=args.openpi_config_name or cfg.get("openpi_config_name"),
+        tokenizer_path=args.tokenizer_path or cfg.get("tokenizer_path"),
+        device=args.device or str(cfg.get("device", "cuda")),
+        seed=args.seed if args.seed is not None else int(cfg.get("seed", 0)),
+        task_ids=_parse_task_ids(args.task_ids if args.task_ids is not None else cfg.get("task_ids")),
+        num_trials_per_task=args.num_trials_per_task
+        if args.num_trials_per_task is not None
+        else int(cfg.get("num_trials_per_task", 20)),
+        max_steps=args.max_steps if args.max_steps is not None else cfg.get("max_steps"),
+        num_steps_wait=args.num_steps_wait
+        if args.num_steps_wait is not None
+        else int(cfg.get("num_steps_wait", 10)),
+        execute_step=args.execute_step if args.execute_step is not None else int(cfg.get("execute_step", 1)),
+        replan_steps=args.replan_steps if args.replan_steps is not None else cfg.get("replan_steps"),
+        center_crop=bool(args.center_crop or cfg.get("center_crop", False)),
+        save_video=bool(args.save_video or cfg.get("save_video", False)),
+        video_every=args.video_every if args.video_every is not None else int(cfg.get("video_every", 0)),
+        use_openvla_prompt=bool(args.use_openvla_prompt or cfg.get("use_openvla_prompt", False)),
+        single_unnorm=bool(args.single_unnorm or cfg.get("single_unnorm", False)),
+        knockout_config=knockout_config,
+        setting=setting,
+        result_name=result_name,
+        mock_env=bool(args.mock_env or cfg.get("mock_env", False)),
+        dry_run=bool(args.dry_run or cfg.get("dry_run", False)),
+        extra_config=dict(cfg.get("extra_config", {})),
+    )
+
+
 def _cmd_report(args: argparse.Namespace) -> int:
     cfg = load_config(args.config)
     out = Path(args.output or cfg.get("output_path", "runs/report.json"))
@@ -576,6 +723,63 @@ def build_parser() -> argparse.ArgumentParser:
     ko_sweep_p.add_argument("--output", required=True, help="Output sweep manifest JSON")
     ko_sweep_p.set_defaults(func=_cmd_knockout_sweep)
 
+    eval_libero_p = sub.add_parser("eval-libero", help="Run or plan LIBERO online rollout evaluation")
+    eval_libero_p.add_argument("config", nargs="?", help="Optional VLA-Trace eval YAML/JSON")
+    eval_libero_p.add_argument("--model", metavar="{OpenVLA,pi0.5}", help=MODEL_HELP)
+    eval_libero_p.add_argument("--dataset", metavar="{libero_10,libero_goal,libero_object,libero_spatial}", help=DATASET_HELP)
+    eval_libero_p.add_argument("--model-config", help="Path to a user-provided model metadata config")
+    eval_libero_p.add_argument("--benchmark-config", help="Path to a user-provided benchmark metadata config")
+    eval_libero_p.add_argument("--model-path", help="User checkpoint/model directory")
+    eval_libero_p.add_argument("--data-root", help="User LIBERO data/root directory")
+    eval_libero_p.add_argument("--config-path", help="Underlying model/eval config, e.g. a VLM4VLA YAML")
+    eval_libero_p.add_argument("--adapter-factory", help="Custom policy factory, e.g. my_pkg.adapters:create_policy")
+    eval_libero_p.add_argument("--vlm4vla-root", help="Optional local VLM4VLA checkout for compatibility evaluation")
+    eval_libero_p.add_argument("--openpi-root", help="Optional OpenPI root or src directory for pi0.5 adapters")
+    eval_libero_p.add_argument("--openpi-config-name", help="OpenPI config name, e.g. pi05_libero")
+    eval_libero_p.add_argument("--tokenizer-path", help="Optional tokenizer.model path for pi0.5/OpenPI adapters")
+    eval_libero_p.add_argument("--output-dir", help="Directory for result JSON and optional videos")
+    eval_libero_p.add_argument("--output", help="Optional extra JSON report path")
+    eval_libero_p.add_argument("--result-name", help="Result JSON filename under --output-dir")
+    eval_libero_p.add_argument("--task-ids", help="Comma-separated LIBERO task ids, e.g. 0,1,2")
+    eval_libero_p.add_argument("--num-trials-per-task", type=int, help="Trials per task")
+    eval_libero_p.add_argument("--max-steps", type=int, help="Override LIBERO suite max steps")
+    eval_libero_p.add_argument("--num-steps-wait", type=int, help="No-op steps after simulator reset")
+    eval_libero_p.add_argument("--execute-step", type=int, help="OpenVLA/VLM4VLA execute_step")
+    eval_libero_p.add_argument("--replan-steps", type=int, help="pi0.5 action chunk replan interval")
+    eval_libero_p.add_argument("--device", default="cuda", help="Device string passed to adapters")
+    eval_libero_p.add_argument("--seed", type=int, default=0)
+    eval_libero_p.add_argument("--center-crop", action="store_true", help="Apply OpenVLA center-crop adapter behavior")
+    eval_libero_p.add_argument("--save-video", action="store_true", help="Allow saving rollout videos when --video-every is set")
+    eval_libero_p.add_argument("--video-every", type=int, help="Save every N episodes; 0 disables videos")
+    eval_libero_p.add_argument("--use-openvla-prompt", action="store_true", help="Use official OpenVLA prompt string")
+    eval_libero_p.add_argument("--single-unnorm", action="store_true", help="Skip double action unnormalization in compatible adapters")
+    eval_libero_p.add_argument("--phase", choices=["prefill", "generation", "both"], help="Knockout phase")
+    eval_libero_p.add_argument(
+        "--mode",
+        default=None,
+        help="Knockout mode: baseline, no_image, no_text, no_vl, no_fusion, or a combined mode",
+    )
+    eval_libero_p.add_argument("--direction", help="Directional knockout, e.g. image->action or text->action")
+    eval_libero_p.add_argument("--prefill-mode", help="Phase-specific prefill knockout mode")
+    eval_libero_p.add_argument("--generation-mode", help="Phase-specific generation knockout mode")
+    eval_libero_p.add_argument(
+        "--text-scope",
+        choices=["all", "instruction", "semantic_instruction", "full", "bos_newline", "newline_only", "exclude_newline"],
+        help="Text token subset for compatible knockout adapters",
+    )
+    eval_libero_p.add_argument("--layers", help="'all' or comma-separated knockout layers")
+    eval_libero_p.add_argument("--center-layer", type=int, help="Layer metadata for plotting one window-scan job")
+    eval_libero_p.add_argument("--window-size", type=int, help="Window metadata for plotting one window-scan job")
+    eval_libero_p.add_argument("--setting", help="Explicit plot setting label, e.g. generation_no_image")
+    eval_libero_p.add_argument("--knockout-manifest", help="Run jobs from a knockout-sweep manifest JSON")
+    eval_libero_p.add_argument("--job-index", type=int, help="Run one manifest job by zero-based index")
+    eval_libero_p.add_argument("--job-tag", help="Run one manifest job whose tag exactly matches this value")
+    eval_libero_p.add_argument("--max-jobs", type=int, help="Limit manifest jobs for smoke tests")
+    eval_libero_p.add_argument("--dry-run", action="store_true", help="Write/print the planned jobs without importing model or LIBERO")
+    eval_libero_p.add_argument("--mock-env", action="store_true", help="Run a deterministic mock evaluation for CI smoke tests")
+    eval_libero_p.add_argument("--print-plan", action="store_true", help="Print resolved plan and exit")
+    eval_libero_p.set_defaults(func=_cmd_eval_libero)
+
     plot_cka_p = sub.add_parser("plot-cka", help="Plot a Stage 1 CKA report JSON")
     plot_cka_p.add_argument("report", help="Path to cross_modal_cka_report.json or checkpoint_drift_cka_report.json")
     plot_cka_p.add_argument("--output", required=True, help="Figure output path, e.g. figures/cka.png")
@@ -930,6 +1134,110 @@ def _parse_str_csv(value: str) -> list[str]:
     if not pieces:
         raise ValueError("Expected at least one comma-separated value")
     return pieces
+
+
+def _resolve_eval_knockout_layers(args: argparse.Namespace, cfg: dict[str, Any]) -> list[int] | str | None:
+    value = args.layers if getattr(args, "layers", None) else cfg.get("layers")
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return "all" if value.strip().lower() == "all" else _parse_int_csv(value)
+    if isinstance(value, dict):
+        if value.get("type") == "all":
+            return "all"
+        if "values" in value:
+            return [int(layer) for layer in value["values"]]
+        if value.get("type") == "window":
+            from vla_trace.knockout.specs import expand_layer_window
+
+            return list(
+                expand_layer_window(
+                    int(cfg.get("num_layers", 32)),
+                    tuple(int(layer) for layer in value.get("center_layers", ())),
+                    int(value["window_size"]),
+                )
+            )
+    return [int(layer) for layer in value]
+
+
+def _parse_task_ids(value: Any) -> tuple[int, ...]:
+    if value in (None, "", "all"):
+        return ()
+    if isinstance(value, str):
+        if value.strip().lower() == "all":
+            return ()
+        return tuple(_parse_int_csv(value))
+    return tuple(int(item) for item in value)
+
+
+def _infer_model_shortcut(value: Any) -> str:
+    text = str(value)
+    try:
+        return normalize_model(text)
+    except ValueError:
+        lowered = text.lower()
+        if "openvla" in lowered:
+            return "openvla"
+        if "pi05" in lowered or "pi0.5" in lowered or "pi0_5" in lowered:
+            return "pi05"
+        raise
+
+
+def _infer_dataset_shortcut(value: Any) -> str:
+    text = str(value)
+    try:
+        return normalize_dataset(text)
+    except ValueError:
+        lowered = text.lower().replace("-", "_")
+        for dataset in DATASET_CONFIGS:
+            if dataset in lowered:
+                return dataset
+        raise
+
+
+def _select_knockout_manifest_jobs(
+    manifest_path: str,
+    *,
+    job_index: int | None,
+    job_tag: str | None,
+    max_jobs: int | None,
+) -> list[dict[str, Any]]:
+    manifest = load_config(manifest_path)
+    jobs = manifest.get("jobs", [])
+    if not isinstance(jobs, list):
+        raise ValueError("Expected knockout manifest with a jobs list")
+    if job_index is not None:
+        if job_index < 0 or job_index >= len(jobs):
+            raise ValueError(f"--job-index must be inside [0, {len(jobs)})")
+        jobs = [jobs[job_index]]
+    if job_tag:
+        jobs = [job for job in jobs if str(job.get("tag", "")) == job_tag]
+        if not jobs:
+            raise ValueError(f"No manifest job matched --job-tag {job_tag!r}")
+    if max_jobs is not None:
+        jobs = jobs[:max_jobs]
+    return [dict(job) for job in jobs]
+
+
+def _knockout_config_from_manifest_job(
+    model: str,
+    job: dict[str, Any],
+    resolver: Any,
+) -> dict[str, Any] | None:
+    knockout_config = resolver(
+        model=model,
+        phase=str(job.get("phase", "generation")),
+        mode=str(job.get("mode", "baseline")),
+        layers=job.get("layers"),
+        direction=job.get("direction"),
+        text_scope=str(job.get("text_scope", "all")),
+    )
+    if isinstance(knockout_config, dict):
+        if job.get("center_layer") is not None:
+            knockout_config["center_layer"] = int(job["center_layer"])
+        if job.get("window_size") is not None:
+            knockout_config["window_size"] = int(job["window_size"])
+    return knockout_config
 
 
 def _print_json(payload: Any) -> None:

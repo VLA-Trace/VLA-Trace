@@ -1,0 +1,18 @@
+model: pi0.5
+dataset: libero_10
+output_dir: runs/pi05_libero_eval
+task_ids: all
+num_trials_per_task: 20
+max_steps: null
+num_steps_wait: 10
+execute_step: 1
+replan_steps: 5
+center_crop: false
+mode: baseline
+phase: generation
+text_scope: all
+openpi_config_name: pi05_libero
+notes: >
+  Public pi0.5/OpenPI LIBERO rollout config. Pass --model-path, --data-root,
+  --tokenizer-path, and either --adapter-factory or --vlm4vla-root/--config-path
+  according to your local model implementation.

@@ -1,0 +1,16 @@
+model: OpenVLA
+dataset: libero_10
+output_dir: runs/openvla_libero_eval
+task_ids: all
+num_trials_per_task: 20
+max_steps: null
+num_steps_wait: 10
+execute_step: 1
+center_crop: true
+mode: baseline
+phase: generation
+text_scope: all
+notes: >
+  Public LIBERO rollout config. Pass --model-path and --data-root at runtime.
+  Use --adapter-factory for custom policies or --vlm4vla-root/--config-path
+  for a local VLM4VLA-compatible checkpoint.

@@ -107,10 +107,10 @@ Benchmarks include:
 
 ## 🛠️ Repository Status
 
-Stage 1, Stage 2, and offline Stage 3 behavior tracing are available as a
-lightweight public alpha. Heavy model execution and online rollout evaluation
-remain adapter-backed: users provide checkpoint paths, optional model
-dependencies, and benchmark installation paths locally.
+Stage 1, Stage 2, LIBERO rollout entrypoints, and offline Stage 3 behavior
+tracing are available as a lightweight public alpha. Heavy model execution
+remains adapter-backed: users provide checkpoint paths, optional model
+dependencies, benchmark installation paths, and model-specific hooks locally.
 
 ### Available Now
 
@@ -118,6 +118,7 @@ dependencies, and benchmark installation paths locally.
 - [x] 🧬 Matched-layer checkpoint-drift summaries for `vision_pooled`, `text_pooled`, and `joint_pooled`
 - [x] 📐 Token pooling helpers for `vision_pooled`, `text_pooled`, and `joint_pooled`
 - [x] 🔌 Public Stage 2 knockout specs, additive mask builders, text-scope selection, directional settings, prefill/generation combined settings, all-layer settings, and standard layer/window sweep manifests
+- [x] 🎮 `eval-libero` rollout CLI for OpenVLA/pi0.5 LIBERO inference, dry-run planning, mock smoke tests, custom policy adapters, VLM4VLA-compatible adapters, and knockout-manifest execution
 - [x] 📊 Visualization commands for CKA, knockout success curves, attention IoU summaries, generic attention maps, and overlays
 - [x] 🧪 Stage 3 attention localization metrics, attention overlay, LIBERO-style PatchMask runtime observation editing, offline PatchMask data generation, and input-edit manifests
 - [x] 🩺 `doctor` checks for local configs, custom model/data paths, representation banks, attention/mask artifacts, result JSONs, and input-edit manifests
@@ -129,14 +130,16 @@ dependencies, and benchmark installation paths locally.
 
 The open-source repository is a method/toolchain release. It provides the
 schemas, CLI tools, mask builders, metrics, and plotting code needed to run the
-manuscript analyses on your own traces. Heavy model forwarding, simulator rollouts,
-and model-internal attention-hook placement remain adapter responsibilities
-because each VLA codebase exposes those tensors differently.
+manuscript analyses on your own traces. The `eval-libero` command provides the
+rollout loop and result schema; heavy model forwarding and model-internal
+attention-hook placement remain adapter responsibilities because each VLA
+codebase exposes those tensors differently.
 
 Community users can plug in custom models by exporting the documented
 representation banks, attention arrays, mask arrays, rollout success logs, and
-input-edit result logs. The core analysis and visualization code does not
-depend on private checkpoints or result directories.
+input-edit result logs, or by passing `--adapter-factory` to `eval-libero`. The
+core analysis and visualization code does not depend on private checkpoints or
+result directories.
 
 ## 🗂️ Repository Structure
 
@@ -146,6 +149,7 @@ VLA-Trace/
 ├── docs/                    # User documentation
 ├── vla_trace/
 │   ├── adapters/            # Model metadata and adapter contracts
+│   ├── evaluation/          # LIBERO rollout runner and policy adapter bridge
 │   ├── representations/     # Cross-modal and checkpoint-drift CKA
 │   ├── knockout/            # Attention knockout interventions
 │   ├── behavior/            # Stage 3 behavior metrics, masks, and edits
@@ -162,6 +166,13 @@ VLA-Trace/
 python -m pip install -e ".[test,plot]"
 vla-trace --help
 pytest -q
+```
+
+For real LIBERO rollout execution, install the extras that match your adapter:
+
+```bash
+python -m pip install -e ".[libero,openvla]"  # OpenVLA-style policies
+python -m pip install -e ".[libero,pi05]"     # pi0.5/OpenPI-style policies
 ```
 
 Supported command-line shortcuts:
@@ -211,6 +222,53 @@ vla-trace doctor \
 
 `doctor` reports `ok`, `warning`, or `error` checks. Use `--strict` if you want
 the command to return nonzero when any check fails.
+
+Run LIBERO inference/evaluation:
+
+```bash
+# Check the exact rollout jobs without importing LIBERO or loading a model.
+vla-trace eval-libero \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --model-path checkpoints/openvla \
+  --data-root datasets/LIBERO \
+  --task-ids 0,1 \
+  --num-trials-per-task 2 \
+  --dry-run \
+  --print-plan
+
+# Real OpenVLA/pi0.5 rollout through a user adapter.
+vla-trace eval-libero \
+  --model OpenVLA \
+  --dataset libero_goal \
+  --model-path checkpoints/my_openvla \
+  --data-root datasets/LIBERO \
+  --adapter-factory my_policy.adapters:create_policy \
+  --task-ids 0 \
+  --num-trials-per-task 5 \
+  --output-dir runs/openvla_libero_goal_eval
+
+# Compatibility path for an existing VLM4VLA checkout.
+vla-trace eval-libero \
+  --model pi0.5 \
+  --dataset libero_10 \
+  --model-path checkpoints/pi05 \
+  --data-root datasets/LIBERO \
+  --vlm4vla-root ../VLM4VLA \
+  --config-path local/configs/pi05_libero.yaml \
+  --openpi-root ../openpi \
+  --tokenizer-path assets/tokenizer.model \
+  --openpi-config-name pi05_libero \
+  --task-ids 0 \
+  --num-trials-per-task 5 \
+  --output-dir runs/pi05_libero10_eval
+```
+
+`--adapter-factory` receives a `PolicyBuildRequest` and returns a policy with
+one of these methods: `predict_action(step)`, `step(image, task)`, or
+`step_pi0(image, wrist_image, state, task)`. For knockout experiments the policy
+should either consume `request.knockout_config` during construction or implement
+`configure_knockout(config)`.
 
 Using your own model:
 
@@ -590,11 +648,51 @@ vla-trace knockout-sweep \
 ```
 
 Each manifest job records `mode`, `phase`, `text_scope`, `layers`, `tag`, and
-`setting`. Your online evaluator reads each job and calls its local equivalent
-of `run_libero_eval.py --knockout_mode ... --knockout_phase ...
---knockout_layers ... --text_knockout_scope ...`. VLA-Trace keeps this as JSON
-so users can launch on a laptop, cluster, or custom rollout service without
-repository-local shell paths.
+`setting`. `eval-libero` can consume the manifest directly:
+
+```bash
+# Run one manifest job.
+vla-trace eval-libero \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --model-path checkpoints/openvla \
+  --data-root datasets/LIBERO \
+  --adapter-factory my_policy.adapters:create_policy \
+  --knockout-manifest runs/openvla_libero10_knockout_standard_sweep.json \
+  --job-index 0 \
+  --task-ids 0 \
+  --num-trials-per-task 5 \
+  --output-dir runs/openvla_libero10_knockout_eval
+
+# Smoke-test the first two jobs without a simulator/model.
+vla-trace eval-libero \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --knockout-manifest runs/openvla_libero10_knockout_standard_sweep.json \
+  --max-jobs 2 \
+  --task-ids 0 \
+  --num-trials-per-task 1 \
+  --mock-env \
+  --output-dir runs/mock_knockout_eval
+```
+
+The output JSON is accepted by `plot-knockout` and `plot-knockout-line`:
+
+```bash
+vla-trace plot-knockout runs/openvla_libero10_knockout_eval \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --output figures/openvla_knockout.png
+
+vla-trace plot-knockout-line runs/openvla_libero10_knockout_eval \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --output-dir figures/openvla_knockout_line
+```
+
+This replaces local shell wrappers such as private `run_libero_eval.py`
+launchers: the repository stores portable JSON job metadata, while users pass
+their own checkpoint, data root, adapter, and cluster launcher at runtime.
 
 `--text-scope` selects which text-side keys are blocked for `no_text` and
 `no_vl` settings:
@@ -635,7 +733,7 @@ adapter-backed collection:
 | Manuscript component | Public command/API | Status |
 | --- | --- | --- |
 | Fig. 2 CKA panels and drift summaries | `collect-repr`, `cka`, `plot-cka-publication` | implemented from public banks/reports |
-| Fig. 4/8/10 knockout line grids | `knockout`, `knockout-sweep`, `plot-knockout-line` | implemented for masks/manifests/plots; rollout success logs are user-supplied |
+| Fig. 4/8/10 knockout line grids | `knockout`, `knockout-sweep`, `eval-libero`, `plot-knockout-line` | implemented for masks/manifests/adapter-backed LIBERO rollout logs/plots |
 | Fig. 5/22 attention IoU and mass | `attention-metrics`, `plot-attention` | implemented from exported attention/mask artifacts |
 | Fig. 17 action-to-image | `attention-export`, `attention-overlay` | implemented as artifact viewer; collection is adapter-backed |
 | Fig. 18/19 token-wise text-to-image | `attention-export`, `plot-attention-map`, `attention-overlay` | implemented as generic tensor/overlay plotting |
