@@ -1,0 +1,7 @@
+model: configs/models/pi05.yaml
+benchmark: configs/benchmarks/libero_10.yaml
+stage: collect-repr
+prompt_style: neutral_robot
+manifest_path: data/libero/manifest.jsonl
+output_dir: runs/pi05_libero_repr
+notes: Heavy model extraction requires the optional pi0.5/OpenPI adapter and user-provided checkpoint.

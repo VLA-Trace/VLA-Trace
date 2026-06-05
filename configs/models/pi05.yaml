@@ -1,0 +1,14 @@
+name: pi0.5
+family: pi05
+adapter: pi05_openpi
+checkpoint: null
+supported_stages: [stage1, stage2, stage3]
+token_layout:
+  visual_tokens: 768
+  action_tokens: null
+  structural_tokens: [bos, newline]
+  text_scope: semantic_instruction
+notes: >
+  pi0.5 uses a bidirectional PaliGemma-style prefix [IMAGE][TEXT] and a
+  flow-matching action expert. The OpenPI adapter is optional and path-free
+  in public configs; users provide checkpoint/tokenizer locations.

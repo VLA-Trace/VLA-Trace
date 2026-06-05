@@ -1,0 +1,7 @@
+name: LIBERO-Spatial
+family: libero
+suite: libero_spatial
+data_root: null
+task_ids: all
+num_trials_per_task: 20
+notes: Spatial-reasoning LIBERO suite.

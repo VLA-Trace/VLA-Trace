@@ -1,0 +1,17 @@
+model: configs/models/pi05.yaml
+benchmark: configs/benchmarks/libero_10.yaml
+family: pi05
+phase: generation
+mode: no_text
+text_scope: instruction
+layers:
+  type: window
+  center_layers: [0, 4, 8, 12, 17]
+  window_size: 5
+num_layers: 18
+token_layout:
+  visual_tokens: 768
+  text_tokens: 32
+  action_tokens: 10
+  token_order: text,visual,action
+output_dir: runs/pi05_libero_knockout

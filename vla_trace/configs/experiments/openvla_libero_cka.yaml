@@ -1,0 +1,6 @@
+analysis: cross_modal
+model: configs/models/openvla.yaml
+benchmark: configs/benchmarks/libero_10.yaml
+bank_paths: {}
+output_dir: runs/openvla_libero_cka
+notes: Fill bank_paths with C0/C1/C2 saved representation banks before running.

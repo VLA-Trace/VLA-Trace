@@ -1,0 +1,7 @@
+name: LIBERO-Object
+family: libero
+suite: libero_object
+data_root: null
+task_ids: all
+num_trials_per_task: 20
+notes: Object-centric LIBERO suite.

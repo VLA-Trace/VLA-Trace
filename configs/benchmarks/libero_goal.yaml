@@ -1,0 +1,7 @@
+name: LIBERO-Goal
+family: libero
+suite: libero_goal
+data_root: null
+task_ids: all
+num_trials_per_task: 20
+notes: Goal-conditioned LIBERO suite.

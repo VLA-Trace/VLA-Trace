@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vla-trace"
+version = "0.1.0a0"
+description = "Diagnostic tooling for tracing representation and causal pathways in Vision-Language-Action models."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [
+  {name = "VLA-Trace Contributors"}
+]
+dependencies = [
+  "numpy>=1.23",
+  "PyYAML>=6.0"
+]
+
+[project.optional-dependencies]
+torch = ["torch>=2.0"]
+plot = ["matplotlib>=3.7"]
+test = ["pytest>=8.0"]
+openvla = ["transformers>=4.40", "torch>=2.0"]
+pi05 = ["torch>=2.0"]
+libero = []
+all = [
+  "matplotlib>=3.7",
+  "pytest>=8.0",
+  "torch>=2.0",
+  "transformers>=4.40"
+]
+
+[project.scripts]
+vla-trace = "vla_trace.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vla_trace*"]
+
+[tool.setuptools.package-data]
+vla_trace = ["configs/**/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

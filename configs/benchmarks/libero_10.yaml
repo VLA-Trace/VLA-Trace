@@ -1,0 +1,7 @@
+name: LIBERO-10
+family: libero
+suite: libero_10
+data_root: null
+task_ids: all
+num_trials_per_task: 20
+notes: Long-horizon compositional manipulation suite used for VLA-Trace Stage 2/3 examples.

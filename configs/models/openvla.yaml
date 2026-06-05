@@ -1,0 +1,13 @@
+name: OpenVLA
+family: openvla
+adapter: openvla_hf
+checkpoint: null
+supported_stages: [stage1, stage2, stage3]
+token_layout:
+  visual_tokens: 256
+  action_tokens: 7
+  structural_tokens: [bos, in_prefix, question_template, out_prefix, newline]
+  text_scope: semantic_instruction
+notes: >
+  OpenVLA uses a causal sequence layout [BOS][IMAGE][TEXT][ACTION].
+  The public config leaves checkpoint paths to the user or release artifact.

@@ -1,0 +1,15 @@
+model: configs/models/openvla.yaml
+benchmark: configs/benchmarks/libero_10.yaml
+family: openvla
+phase: generation
+mode: no_image
+layers:
+  type: window
+  center_layers: [0, 8, 16, 24, 31]
+  window_size: 7
+num_layers: 32
+token_layout:
+  visual_tokens: 256
+  text_tokens: 32
+  action_tokens: 7
+output_dir: runs/openvla_libero_knockout
