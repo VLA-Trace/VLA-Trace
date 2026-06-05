@@ -250,11 +250,29 @@ def _cmd_knockout_sweep(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_patchmask_sweep(args: argparse.Namespace) -> int:
+    from vla_trace.behavior.patchmask import build_standard_patchmask_manifest
+
+    manifest = build_standard_patchmask_manifest(
+        model=args.model,
+        dataset=args.dataset,
+        output_path=args.output,
+        include_baseline=not args.no_baseline,
+        modes=tuple(_parse_str_csv(args.modes)) if args.modes else None,
+        variants=tuple(_parse_str_csv(args.variants)) if args.variants else None,
+        trials=args.trials,
+    )
+    print(str(args.output) if args.output else f"jobs={manifest['n_jobs']}")
+    return 0
+
+
 def _cmd_eval_libero(args: argparse.Namespace) -> int:
     from vla_trace.evaluation.libero import (
         build_libero_eval_plan,
+        resolve_patchmask_config_for_eval,
         resolve_knockout_config_for_eval,
         run_libero_evaluation,
+        setting_name_from_patchmask,
         setting_name_from_knockout,
     )
 
@@ -264,6 +282,8 @@ def _cmd_eval_libero(args: argparse.Namespace) -> int:
         args.dataset or cfg.get("dataset") or cfg.get("suite") or cfg.get("benchmark", "libero_10")
     )
     output_dir = args.output_dir or cfg.get("output_dir") or f"runs/{model}_{dataset}_eval"
+    if args.knockout_manifest and args.patchmask_manifest:
+        raise ValueError("Use either --knockout-manifest or --patchmask-manifest in one eval-libero invocation")
 
     if args.knockout_manifest:
         jobs = _select_knockout_manifest_jobs(
@@ -284,6 +304,7 @@ def _cmd_eval_libero(args: argparse.Namespace) -> int:
                 dataset=dataset,
                 output_dir=str(Path(output_dir) / tag),
                 knockout_config=knockout_config,
+                patchmask_config=None,
                 setting=setting,
                 result_name=args.result_name,
             )
@@ -292,6 +313,50 @@ def _cmd_eval_libero(args: argparse.Namespace) -> int:
             "status": "planned" if args.print_plan else "ok",
             "command": "eval-libero",
             "manifest": args.knockout_manifest,
+            "n_jobs": len(jobs),
+            "results": results,
+        }
+        if args.print_plan:
+            _print_json(payload)
+        elif args.output:
+            write_json(args.output, payload)
+            print(str(args.output))
+        else:
+            for result in results:
+                print(str(result["result_path"]))
+        return 0
+
+    if args.patchmask_manifest:
+        jobs = _select_manifest_jobs(
+            args.patchmask_manifest,
+            manifest_name="patchmask",
+            job_index=args.job_index,
+            job_tag=args.job_tag,
+            max_jobs=args.max_jobs,
+        )
+        results = []
+        for idx, job in enumerate(jobs):
+            job_model = _infer_model_shortcut(job.get("model", model))
+            job_dataset = _infer_dataset_shortcut(job.get("dataset", dataset))
+            patchmask_config = _patchmask_config_from_manifest_job(job, resolve_patchmask_config_for_eval)
+            setting = str(job.get("setting") or setting_name_from_patchmask(patchmask_config))
+            tag = str(job.get("tag") or f"job_{idx:04d}_{setting}")
+            request = _build_eval_request(
+                args,
+                cfg,
+                model=job_model,
+                dataset=job_dataset,
+                output_dir=str(Path(output_dir) / tag),
+                knockout_config=None,
+                patchmask_config=patchmask_config,
+                setting=setting,
+                result_name=args.result_name,
+            )
+            results.append(build_libero_eval_plan(request) if args.print_plan else run_libero_evaluation(request))
+        payload = {
+            "status": "planned" if args.print_plan else "ok",
+            "command": "eval-libero",
+            "manifest": args.patchmask_manifest,
             "n_jobs": len(jobs),
             "results": results,
         }
@@ -322,6 +387,12 @@ def _cmd_eval_libero(args: argparse.Namespace) -> int:
             knockout_config["center_layer"] = args.center_layer
         if args.window_size is not None:
             knockout_config["window_size"] = args.window_size
+    patchmask_config = _resolve_eval_patchmask_config(args, cfg, resolve_patchmask_config_for_eval)
+    if patchmask_config and knockout_config:
+        raise ValueError("Run PatchMask and attention knockout as separate eval-libero jobs")
+    setting = args.setting or str(cfg.get("setting") or setting)
+    if patchmask_config and setting == setting_name_from_knockout(knockout_config):
+        setting = setting_name_from_patchmask(patchmask_config)
     request = _build_eval_request(
         args,
         cfg,
@@ -329,6 +400,7 @@ def _cmd_eval_libero(args: argparse.Namespace) -> int:
         dataset=dataset,
         output_dir=str(output_dir),
         knockout_config=knockout_config,
+        patchmask_config=patchmask_config,
         setting=setting,
         result_name=args.result_name or cfg.get("result_name"),
     )
@@ -352,6 +424,7 @@ def _build_eval_request(
     dataset: str,
     output_dir: str,
     knockout_config: dict[str, Any] | None,
+    patchmask_config: dict[str, Any] | None,
     setting: str,
     result_name: str | None,
 ) -> Any:
@@ -389,6 +462,7 @@ def _build_eval_request(
         use_openvla_prompt=bool(args.use_openvla_prompt or cfg.get("use_openvla_prompt", False)),
         single_unnorm=bool(args.single_unnorm or cfg.get("single_unnorm", False)),
         knockout_config=knockout_config,
+        patchmask_config=patchmask_config,
         setting=setting,
         result_name=result_name,
         mock_env=bool(args.mock_env or cfg.get("mock_env", False)),
@@ -786,6 +860,16 @@ def build_parser() -> argparse.ArgumentParser:
     ko_sweep_p.add_argument("--output", required=True, help="Output sweep manifest JSON")
     ko_sweep_p.set_defaults(func=_cmd_knockout_sweep)
 
+    patchmask_sweep_p = sub.add_parser("patchmask-sweep", help="Build standard LIBERO PatchMask job manifests")
+    patchmask_sweep_p.add_argument("--model", required=True, help="OpenVLA, pi0.5, or all")
+    patchmask_sweep_p.add_argument("--dataset", required=True, help="LIBERO suite name or all")
+    patchmask_sweep_p.add_argument("--variants", help="Comma-separated variants; defaults to target/gripper/robot/robot-body/background")
+    patchmask_sweep_p.add_argument("--modes", help="Comma-separated modes; defaults to black,background_fill,mosaic")
+    patchmask_sweep_p.add_argument("--trials", type=int, help="Optional rollout trial count metadata")
+    patchmask_sweep_p.add_argument("--no-baseline", action="store_true", help="Omit the baseline no-mask job")
+    patchmask_sweep_p.add_argument("--output", required=True, help="Output PatchMask sweep manifest JSON")
+    patchmask_sweep_p.set_defaults(func=_cmd_patchmask_sweep)
+
     eval_libero_p = sub.add_parser("eval-libero", help="Run or plan LIBERO online rollout evaluation")
     eval_libero_p.add_argument("config", nargs="?", help="Optional VLA-Trace eval YAML/JSON")
     eval_libero_p.add_argument("--model", metavar="{OpenVLA,pi0.5}", help=MODEL_HELP)
@@ -835,6 +919,22 @@ def build_parser() -> argparse.ArgumentParser:
     eval_libero_p.add_argument("--window-size", type=int, help="Window metadata for plotting one window-scan job")
     eval_libero_p.add_argument("--setting", help="Explicit plot setting label, e.g. generation_no_image")
     eval_libero_p.add_argument("--knockout-manifest", help="Run jobs from a knockout-sweep manifest JSON")
+    eval_libero_p.add_argument("--patchmask-manifest", help="Run jobs from a patchmask-sweep manifest JSON")
+    eval_libero_p.add_argument(
+        "--patchmask-variant",
+        "--image-mask-variant",
+        dest="patchmask_variant",
+        help="PatchMask variant: none, mask_target, mask_gripper, mask_robot, mask_robot_exc_gripper, or mask_background",
+    )
+    eval_libero_p.add_argument(
+        "--patchmask-mode",
+        "--image-mask-mode",
+        dest="patchmask_mode",
+        help="PatchMask replacement mode: none, black, background_fill, or mosaic",
+    )
+    eval_libero_p.add_argument("--patchmask-mask-value", "--image-mask-value", dest="patchmask_mask_value", type=int)
+    eval_libero_p.add_argument("--patchmask-bg-ring-width", "--image-mask-bg-ring-width", dest="patchmask_bg_ring_width", type=int)
+    eval_libero_p.add_argument("--patchmask-mosaic-block", "--image-mask-mosaic-block", dest="patchmask_mosaic_block", type=int)
     eval_libero_p.add_argument("--job-index", type=int, help="Run one manifest job by zero-based index")
     eval_libero_p.add_argument("--job-tag", help="Run one manifest job whose tag exactly matches this value")
     eval_libero_p.add_argument("--max-jobs", type=int, help="Limit manifest jobs for smoke tests")
@@ -1278,9 +1378,10 @@ def _infer_dataset_shortcut(value: Any) -> str:
         raise
 
 
-def _select_knockout_manifest_jobs(
+def _select_manifest_jobs(
     manifest_path: str,
     *,
+    manifest_name: str,
     job_index: int | None,
     job_tag: str | None,
     max_jobs: int | None,
@@ -1288,7 +1389,7 @@ def _select_knockout_manifest_jobs(
     manifest = load_config(manifest_path)
     jobs = manifest.get("jobs", [])
     if not isinstance(jobs, list):
-        raise ValueError("Expected knockout manifest with a jobs list")
+        raise ValueError(f"Expected {manifest_name} manifest with a jobs list")
     if job_index is not None:
         if job_index < 0 or job_index >= len(jobs):
             raise ValueError(f"--job-index must be inside [0, {len(jobs)})")
@@ -1300,6 +1401,22 @@ def _select_knockout_manifest_jobs(
     if max_jobs is not None:
         jobs = jobs[:max_jobs]
     return [dict(job) for job in jobs]
+
+
+def _select_knockout_manifest_jobs(
+    manifest_path: str,
+    *,
+    job_index: int | None,
+    job_tag: str | None,
+    max_jobs: int | None,
+) -> list[dict[str, Any]]:
+    return _select_manifest_jobs(
+        manifest_path,
+        manifest_name="knockout",
+        job_index=job_index,
+        job_tag=job_tag,
+        max_jobs=max_jobs,
+    )
 
 
 def _knockout_config_from_manifest_job(
@@ -1321,6 +1438,71 @@ def _knockout_config_from_manifest_job(
         if job.get("window_size") is not None:
             knockout_config["window_size"] = int(job["window_size"])
     return knockout_config
+
+
+def _resolve_eval_patchmask_config(args: argparse.Namespace, cfg: dict[str, Any], resolver: Any) -> dict[str, Any] | None:
+    patch_cfg = cfg.get("patchmask_config") or cfg.get("image_mask_eval_cfg") or {}
+    if not isinstance(patch_cfg, dict):
+        patch_cfg = {}
+    variant = (
+        getattr(args, "patchmask_variant", None)
+        or patch_cfg.get("variant")
+        or cfg.get("patchmask_variant")
+        or cfg.get("image_mask_variant")
+    )
+    mode = (
+        getattr(args, "patchmask_mode", None)
+        or patch_cfg.get("mode")
+        or cfg.get("patchmask_mode")
+        or cfg.get("image_mask_mode")
+    )
+    if variant is None and mode is None:
+        return None
+    return resolver(
+        variant=str(variant or "none"),
+        mode=str(mode or "none"),
+        mask_value=_coalesce_int(
+            getattr(args, "patchmask_mask_value", None),
+            patch_cfg.get("mask_value"),
+            cfg.get("patchmask_mask_value"),
+            cfg.get("image_mask_value"),
+            default=0,
+        ),
+        bg_ring_width=_coalesce_int(
+            getattr(args, "patchmask_bg_ring_width", None),
+            patch_cfg.get("bg_ring_width"),
+            cfg.get("patchmask_bg_ring_width"),
+            cfg.get("image_mask_bg_ring_width"),
+            default=8,
+        ),
+        mosaic_block=_coalesce_int(
+            getattr(args, "patchmask_mosaic_block", None),
+            patch_cfg.get("mosaic_block"),
+            cfg.get("patchmask_mosaic_block"),
+            cfg.get("image_mask_mosaic_block"),
+            default=8,
+        ),
+    )
+
+
+def _patchmask_config_from_manifest_job(job: dict[str, Any], resolver: Any) -> dict[str, Any] | None:
+    patch_cfg = job.get("patchmask_config") or {}
+    if not isinstance(patch_cfg, dict):
+        patch_cfg = {}
+    return resolver(
+        variant=str(job.get("variant") or job.get("patchmask_variant") or patch_cfg.get("variant") or "none"),
+        mode=str(job.get("mode") or job.get("patchmask_mode") or patch_cfg.get("mode") or "none"),
+        mask_value=_coalesce_int(job.get("mask_value"), patch_cfg.get("mask_value"), default=0),
+        bg_ring_width=_coalesce_int(job.get("bg_ring_width"), patch_cfg.get("bg_ring_width"), default=8),
+        mosaic_block=_coalesce_int(job.get("mosaic_block"), patch_cfg.get("mosaic_block"), default=8),
+    )
+
+
+def _coalesce_int(*values: Any, default: int) -> int:
+    for value in values:
+        if value is not None:
+            return int(value)
+    return int(default)
 
 
 def _print_json(payload: Any) -> None:

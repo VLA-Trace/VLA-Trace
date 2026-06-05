@@ -107,8 +107,8 @@ Benchmarks include:
 
 ## 🛠️ Repository Status
 
-Stage 1, Stage 2, LIBERO rollout entrypoints, and offline Stage 3 behavior
-tracing are available as a lightweight public alpha. Heavy model execution
+Stage 1, Stage 2, LIBERO rollout entrypoints, and Stage 3 behavior tracing
+are available as a lightweight public alpha. Heavy model execution
 remains adapter-backed: users provide checkpoint paths, optional model
 dependencies, benchmark installation paths, and model-specific hooks locally.
 
@@ -118,9 +118,9 @@ dependencies, benchmark installation paths, and model-specific hooks locally.
 - [x] 🧬 Matched-layer checkpoint-drift summaries for `vision_pooled`, `text_pooled`, and `joint_pooled`
 - [x] 📐 Token pooling helpers for `vision_pooled`, `text_pooled`, and `joint_pooled`
 - [x] 🔌 Public Stage 2 knockout specs, additive mask builders, text-scope selection, directional settings, prefill/generation combined settings, all-layer settings, and standard layer/window sweep manifests
-- [x] 🎮 `eval-libero` rollout CLI for OpenVLA/pi0.5 LIBERO inference, dry-run planning, mock smoke tests, custom policy adapters, VLM4VLA-compatible adapters, and knockout-manifest execution
+- [x] 🎮 `eval-libero` rollout CLI for OpenVLA/pi0.5 LIBERO inference, dry-run planning, mock smoke tests, custom policy adapters, VLM4VLA-compatible adapters, knockout-manifest execution, and PatchMask-manifest execution
 - [x] 📊 Visualization commands for CKA, knockout success curves, attention IoU summaries, generic attention maps, and overlays
-- [x] 🧪 Stage 3 attention localization metrics, attention overlay, LIBERO-style PatchMask runtime observation editing, offline PatchMask data generation, and input-edit manifests
+- [x] 🧪 Stage 3 attention localization metrics, attention overlay, LIBERO PatchMask online/runtime observation editing, offline PatchMask data generation, and input-edit manifests
 - [x] 🩺 `doctor` checks for local configs, custom model/data paths, representation banks, attention/mask artifacts, result JSONs, and input-edit manifests
 - [x] ⚙️ Model configs for pi0.5 and OpenVLA
 - [x] ⚙️ LIBERO benchmark configs for `libero_10`, `libero_goal`, `libero_object`, and `libero_spatial`
@@ -960,11 +960,12 @@ token counts for quick inspection.
 
 ### Stage 3 Behavior Trace Details
 
-Stage 3 is released as an offline-first toolkit. Your model or benchmark runner
-exports observations, attention maps, masks, and success logs; VLA-Trace then
-computes metrics, builds perturbed inputs, and generates figures. Online
-rollout collection remains adapter-backed because each model family exposes
-attention tensors and simulator masks differently.
+Stage 3 combines adapter-backed rollout collection with portable artifact
+analysis. Your model or benchmark runner can export observations, attention
+maps, masks, and success logs; VLA-Trace computes metrics, builds perturbed
+inputs, and generates figures. For LIBERO PatchMask, `eval-libero` also
+provides the online rollout loop that edits simulator observations before
+OpenVLA/pi0.5 inference.
 
 Manuscript-method coverage is intentionally split between portable public tools and
 adapter-backed collection:
@@ -978,7 +979,7 @@ adapter-backed collection:
 | Fig. 18/19 token-wise text-to-image | `attention-export`, `plot-attention-map`, `attention-overlay` | implemented as generic tensor/overlay plotting |
 | Fig. 20 action-to-text | `attention-export`, `plot-attention-map` | implemented as bar/line/heatmap plotting |
 | Fig. 21 layer-wise modality attention | `attention-export`, `plot-attention-map` | implemented from `layer_modality_*` arrays |
-| PatchMask perturbation tables | `patchmask`, `apply_image_mask_to_obs_inplace`, `plot-knockout` | implemented for perturbation generation/plot schema; rollout execution is user-supplied |
+| PatchMask perturbation tables | `patchmask`, `patchmask-sweep`, `eval-libero`, `apply_image_mask_to_obs_inplace`, `plot-knockout` | implemented for offline perturbations, LIBERO online masking, sweep manifests, result schema, and plots |
 | Input editing | `input-edit` | manifest and result-summary layer; environment/image edit execution is user-supplied |
 
 #### Attention Data Processing
@@ -1198,84 +1199,153 @@ to `--keep-last-dims`. This makes saved tensors such as
 `[layers, heads, action_tokens, text_tokens]`,
 `[layers, modalities]`, and `[tokens, patches]` directly plottable.
 
-#### PatchMask Data Generation
+#### PatchMask Experiments
 
 PatchMask tests visual shortcut dependence by replacing selected visual regions
-before model inference. The public tool consumes user-exported image arrays and
-instance masks; simulator-specific code is only responsible for producing
-those masks from LIBERO/CALVIN/Simpler/RoboTwin or another environment.
+immediately before model inference. In LIBERO, VLA-Trace obtains component masks
+from simulator instance segmentation rather than from saved image files:
+`eval-libero` creates `SegmentationRenderEnv(camera_segmentations="instance")`
+when PatchMask is active, detects the `agentview` and wrist segmentation keys,
+builds a mask for the requested component, edits `agentview_image` and
+`robot0_eye_in_hand_image`, and then calls the OpenVLA/pi0.5 adapter.
 
-For LIBERO online rollout, the public PatchMask path follows
-`eval/libero/image_mask_utils.py`: run the simulator with instance
-segmentation enabled, read the per-step `agentview` and `eye_in_hand`
-segmentation observations, select instances according to the PatchMask setting,
-and replace the current RGB observations immediately before model inference.
-The same idea applies to other simulators; only the instance names and robot
-parts differ by environment.
+Supported online LIBERO variants:
 
-Supported variants:
-
-```bash
-none
-mask_target
-mask_gripper
-mask_robot
-mask_robot_exc_gripper
-mask_background
-custom
-```
-
-Supported replacement modes:
-
-```bash
-none
-black
-background_fill
-mosaic
-```
-
-Online LIBERO-style evaluator hook:
-
-```python
-from vla_trace.behavior import ImageMaskEvalConfig, apply_image_mask_to_obs_inplace
-
-cfg = ImageMaskEvalConfig(
-    variant="mask_target",
-    mode="background_fill",
-    mask_value=0,
-    bg_ring_width=8,
-    mosaic_block=8,
-)
-
-seg_keys = None
-obs = env.reset()
-for step in range(max_steps):
-    if seg_keys is None:
-        # Auto-detects agentview and wrist instance-segmentation keys.
-        # You may also pass explicit keys when your environment uses custom names.
-        pass
-    apply_image_mask_to_obs_inplace(obs, env, cfg, seg_keys=seg_keys)
-    action = policy(obs, instruction)
-    obs, reward, done, info = env.step(action)
-```
-
-`apply_image_mask_to_obs_inplace` expects the environment to expose
-`get_segmentation_instances(seg)`, `obj_of_interest`, and, when available,
-`env.model.instances_to_ids`. It edits both `agentview_image` and
-`robot0_eye_in_hand_image`; OpenVLA-style runners can consume the agent view
-only, while pi0.5-style runners can consume both views.
-
-Variant selection follows the VLA-Trace implementation:
-
-| Variant | Mask source |
+| Variant | Component mask |
 | --- | --- |
-| `mask_target` | union of `env.obj_of_interest` instances |
-| `mask_robot` | simulator `robot` instance; full-robot setting |
+| `mask_target` | union of `env.obj_of_interest` task instances |
 | `mask_gripper` | simulator `gripper` instance |
-| `mask_robot_exc_gripper` | robot mask minus raw gripper instance id; robot-body setting |
-| `mask_background` | inverse of the union of all foreground instances |
+| `mask_robot` | full robot instance |
+| `mask_robot_exc_gripper` | robot mask minus the gripper id |
+| `mask_background` | inverse of all foreground simulator instances |
 
-Generate a masked observation artifact:
+Supported replacement modes are `black`, `background_fill`, and `mosaic`.
+Use `variant=none, mode=none` for the baseline. The same mask selection idea
+works in other simulators, but the target instances and robot-part instances
+must be mapped to that simulator's segmentation output.
+
+Check the exact online PatchMask rollout plan without importing LIBERO:
+
+```bash
+vla-trace eval-libero \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --model-path checkpoints/openvla \
+  --data-root datasets/LIBERO \
+  --task-ids 0 \
+  --num-trials-per-task 2 \
+  --patchmask-variant mask_target \
+  --patchmask-mode black \
+  --dry-run \
+  --print-plan
+```
+
+The printed plan contains `patchmask_config` and
+`requires_instance_segmentation=true`. A real OpenVLA-style rollout uses the
+same flags plus a policy adapter or a compatible checkpoint:
+
+```bash
+vla-trace eval-libero \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --model-path checkpoints/my_openvla \
+  --data-root datasets/LIBERO \
+  --adapter-factory my_policy.adapters:create_policy \
+  --task-ids 0,1,2,3,4,5,6,7,8,9 \
+  --num-trials-per-task 20 \
+  --patchmask-variant mask_target \
+  --patchmask-mode background_fill \
+  --output-dir runs/openvla_libero10_patchmask_target_background
+```
+
+pi0.5/OpenPI-style rollouts use the same PatchMask flags and provide the
+model-specific adapter inputs:
+
+```bash
+vla-trace eval-libero \
+  --model pi0.5 \
+  --dataset libero_goal \
+  --model-path checkpoints/pi05 \
+  --data-root datasets/LIBERO \
+  --adapter-factory my_pi05.adapters:create_policy \
+  --openpi-root third_party/openpi \
+  --tokenizer-path assets/tokenizer.model \
+  --openpi-config-name pi05_libero \
+  --task-ids 0 \
+  --num-trials-per-task 20 \
+  --patchmask-variant mask_gripper \
+  --patchmask-mode mosaic \
+  --output-dir runs/pi05_libero_goal_patchmask_gripper_mosaic
+```
+
+For compatibility with older local commands, `eval-libero` also accepts
+`--image-mask-variant`, `--image-mask-mode`, `--image-mask-value`,
+`--image-mask-bg-ring-width`, and `--image-mask-mosaic-block` as aliases for
+the public `--patchmask-*` flags.
+
+Generate the standard PatchMask sweep manifest. This is the public,
+path-clean replacement for local batch launchers:
+
+```bash
+vla-trace patchmask-sweep \
+  --model all \
+  --dataset all \
+  --output runs/stage3/patchmask_sweep.json
+```
+
+The default sweep creates baseline plus 14 PatchMask settings for every
+OpenVLA/pi0.5 and LIBERO-suite pair:
+
+```text
+baseline
+mask_target: black, background_fill, mosaic
+mask_gripper: black, background_fill, mosaic
+mask_robot: black, background_fill, mosaic
+mask_robot_exc_gripper: black, background_fill, mosaic
+mask_background: black, mosaic
+```
+
+Run one PatchMask job from the manifest:
+
+```bash
+vla-trace eval-libero \
+  --patchmask-manifest runs/stage3/patchmask_sweep.json \
+  --job-tag openvla/libero_10/patchmask_mask_target_black \
+  --model-path checkpoints/my_openvla \
+  --data-root datasets/LIBERO \
+  --adapter-factory my_policy.adapters:create_policy \
+  --task-ids 0 \
+  --num-trials-per-task 20 \
+  --output-dir runs/stage3/patchmask_eval
+```
+
+Run a scheduler array job by index:
+
+```bash
+vla-trace eval-libero \
+  --patchmask-manifest runs/stage3/patchmask_sweep.json \
+  --job-index "${JOB_INDEX}" \
+  --model-path checkpoints/my_model \
+  --data-root datasets/LIBERO \
+  --adapter-factory my_policy.adapters:create_policy \
+  --num-trials-per-task 20 \
+  --output-dir runs/stage3/patchmask_eval
+```
+
+Each rollout writes plot-compatible result JSON with `model`, `dataset`,
+`setting`, `success_num`, `test_num`, and `patchmask_config`. Plot PatchMask
+success drops with the same intervention plotting command:
+
+```bash
+vla-trace plot-knockout runs/stage3/patchmask_eval \
+  --setting patchmask \
+  --output figures/patchmask_success.png \
+  --source-data figures/patchmask_success.csv
+```
+
+The offline `patchmask` command is still useful for debugging one saved frame
+or for non-LIBERO environments that export image arrays and instance-mask NPZ
+files:
 
 ```bash
 vla-trace patchmask \
@@ -1289,7 +1359,7 @@ vla-trace patchmask \
   --output-manifest runs/stage3/patchmask_manifest.json
 ```
 
-For `custom`, pass one or more explicit instance names:
+For offline `custom` masks, pass one or more explicit instance names:
 
 ```bash
 vla-trace patchmask \
@@ -1300,25 +1370,6 @@ vla-trace patchmask \
   --instance moka_pot \
   --output-image runs/stage3/obs_step_030_custom_masked.npy
 ```
-
-Your online evaluator can now replace the original observation image with the
-masked `.npy` array before calling the model. After rollout, write success logs
-with explicit metadata, for example:
-
-```json
-{
-  "model": "pi0.5",
-  "dataset": "libero_10",
-  "setting": "patchmask_mask_target_background_fill",
-  "variant": "mask_target",
-  "mode": "background_fill",
-  "success_num": 12,
-  "test_num": 20
-}
-```
-
-These logs can be visualized with `vla-trace plot-knockout` because the result
-schema is the same success-rate schema used for intervention studies.
 
 #### Input Editing
 

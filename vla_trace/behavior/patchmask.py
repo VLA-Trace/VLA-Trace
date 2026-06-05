@@ -9,11 +9,16 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from vla_trace.io import write_json
+from vla_trace.io.registry import DATASET_CONFIGS, MODEL_CONFIGS, normalize_dataset, normalize_model
+
 
 PATCHMASK_VARIANTS = frozenset(
     {"none", "mask_target", "mask_gripper", "mask_robot", "mask_robot_exc_gripper", "mask_background", "custom"}
 )
 PATCHMASK_MODES = frozenset({"none", "black", "background_fill", "mosaic"})
+LIBERO_PATCHMASK_VARIANTS = ("mask_target", "mask_gripper", "mask_robot", "mask_robot_exc_gripper", "mask_background")
+LIBERO_PATCHMASK_MODES = ("black", "background_fill", "mosaic")
 
 
 @dataclass(frozen=True)
@@ -294,6 +299,99 @@ def write_patchmask_artifact(
     if output_manifest:
         _write_json(output_manifest, manifest)
     return manifest
+
+
+def build_standard_patchmask_manifest(
+    *,
+    model: str,
+    dataset: str,
+    output_path: str | Path | None = None,
+    include_baseline: bool = True,
+    modes: list[str] | tuple[str, ...] | None = None,
+    variants: list[str] | tuple[str, ...] | None = None,
+    trials: int | None = None,
+) -> dict[str, Any]:
+    """Build the public LIBERO PatchMask job matrix.
+
+    The matrix is the path-clean counterpart of the original local launcher:
+    baseline, target/gripper/robot/robot-body/background masking, and the
+    standard replacement styles. Background masking omits background_fill by
+    default because the selected region has no local foreground-free ring in
+    many LIBERO scenes.
+    """
+
+    models = _expand_model_selector(model)
+    datasets = _expand_dataset_selector(dataset)
+    selected_modes = tuple(modes or LIBERO_PATCHMASK_MODES)
+    selected_variants = tuple(variants or LIBERO_PATCHMASK_VARIANTS)
+    for mode in selected_modes:
+        if mode not in PATCHMASK_MODES - {"none"}:
+            raise ValueError(f"Unsupported PatchMask mode for LIBERO sweep: {mode}")
+    for variant in selected_variants:
+        if variant not in set(LIBERO_PATCHMASK_VARIANTS):
+            raise ValueError(f"Unsupported PatchMask variant for LIBERO sweep: {variant}")
+
+    jobs: list[dict[str, Any]] = []
+    for family in models:
+        for suite in datasets:
+            if include_baseline:
+                jobs.append(
+                    {
+                        "job_type": "baseline",
+                        "model": family,
+                        "dataset": suite,
+                        "variant": "none",
+                        "mode": "none",
+                        "setting": "baseline",
+                        "tag": f"{family}/{suite}/baseline",
+                    }
+                )
+            for variant in selected_variants:
+                for mode in selected_modes:
+                    if variant == "mask_background" and mode == "background_fill":
+                        continue
+                    setting = f"patchmask_{variant}_{mode}"
+                    jobs.append(
+                        {
+                            "job_type": "patchmask",
+                            "model": family,
+                            "dataset": suite,
+                            "variant": variant,
+                            "mode": mode,
+                            "setting": setting,
+                            "tag": f"{family}/{suite}/{setting}",
+                        }
+                    )
+    manifest = {
+        "status": "ok",
+        "preset": "standard_libero_patchmask",
+        "model": model,
+        "dataset": dataset,
+        "models": models,
+        "datasets": datasets,
+        "variants": list(selected_variants),
+        "modes": list(selected_modes),
+        "include_baseline": include_baseline,
+        "trials": trials,
+        "requires_instance_segmentation": True,
+        "n_jobs": len(jobs),
+        "jobs": jobs,
+    }
+    if output_path:
+        write_json(output_path, manifest)
+    return manifest
+
+
+def _expand_model_selector(value: str) -> list[str]:
+    if str(value).strip().lower() in {"all", "*"}:
+        return list(MODEL_CONFIGS)
+    return [normalize_model(value)]
+
+
+def _expand_dataset_selector(value: str) -> list[str]:
+    if str(value).strip().lower() in {"all", "*"}:
+        return list(DATASET_CONFIGS)
+    return [normalize_dataset(value)]
 
 
 def _mask_bool_2d(mask: Any, shape: tuple[int, int]) -> np.ndarray:

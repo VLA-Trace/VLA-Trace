@@ -13,8 +13,16 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from vla_trace.behavior.patchmask import (
+    PATCHMASK_MODES,
+    PATCHMASK_VARIANTS,
+    ImageMaskEvalConfig,
+    apply_image_mask_to_obs_inplace,
+    detect_instance_seg_keys,
+)
 from vla_trace.evaluation.adapters import LiberoStep, PolicyBuildRequest, build_policy
 from vla_trace.io import load_config, write_json
+
 LIBERO_MAX_STEPS = {
     "libero_spatial": 220,
     "libero_object": 280,
@@ -61,6 +69,7 @@ class LiberoEvalRequest:
     use_openvla_prompt: bool = False
     single_unnorm: bool = False
     knockout_config: dict[str, Any] | None = None
+    patchmask_config: dict[str, Any] | None = None
     setting: str = "baseline"
     result_name: str | None = None
     mock_env: bool = False
@@ -121,6 +130,8 @@ def build_libero_eval_plan(request: LiberoEvalRequest) -> dict[str, Any]:
         "vlm4vla_root": request.vlm4vla_root,
         "openpi_config_name": request.openpi_config_name,
         "knockout_config": request.knockout_config,
+        "patchmask_config": request.patchmask_config,
+        "requires_instance_segmentation": bool(_patchmask_runtime_config(request.patchmask_config)),
         "jobs": jobs,
     }
 
@@ -193,7 +204,7 @@ def _run_real_libero_eval(request: LiberoEvalRequest, plan: dict[str, Any]) -> d
     )
     policy.configure_knockout(request.knockout_config)
 
-    benchmark_module, OffScreenRenderEnv, get_libero_path = _import_libero_stack()
+    benchmark_module, OffScreenRenderEnv, SegmentationRenderEnv, get_libero_path = _import_libero_stack()
     benchmark_dict = benchmark_module.get_benchmark_dict()
     if request.dataset not in benchmark_dict:
         raise ValueError(f"LIBERO suite {request.dataset!r} not found in local LIBERO installation")
@@ -204,7 +215,14 @@ def _run_real_libero_eval(request: LiberoEvalRequest, plan: dict[str, Any]) -> d
     for task_id in request.resolved_task_ids:
         task = task_suite.get_task(task_id)
         initial_states = task_suite.get_task_init_states(task_id)
-        env, task_description = _make_libero_env(task, OffScreenRenderEnv, get_libero_path, seed=request.seed)
+        env, task_description = _make_libero_env(
+            task,
+            OffScreenRenderEnv,
+            SegmentationRenderEnv,
+            get_libero_path,
+            seed=request.seed,
+            use_instance_segmentation=bool(_patchmask_runtime_config(request.patchmask_config)),
+        )
         try:
             for episode_id in range(request.num_trials_per_task):
                 if episode_id >= len(initial_states):
@@ -255,6 +273,8 @@ def _run_single_episode(
     success = False
     steps_taken = 0
     wait_action = get_libero_dummy_action(request.model)
+    patchmask_cfg = _patchmask_runtime_config(request.patchmask_config)
+    patchmask_seg_keys: tuple[str, str] | None = None
     for _ in range(request.num_steps_wait):
         obs, _reward, done, _info = env.step(wait_action)
         if done:
@@ -262,8 +282,22 @@ def _run_single_episode(
             break
     if not success:
         for step_id in range(request.resolved_max_steps):
+            obs_for_policy = obs
+            if patchmask_cfg is not None:
+                if not isinstance(obs_for_policy, dict):
+                    obs_for_policy = dict(obs_for_policy)
+                try:
+                    if patchmask_seg_keys is None:
+                        patchmask_seg_keys = detect_instance_seg_keys(obs_for_policy)
+                    apply_image_mask_to_obs_inplace(obs_for_policy, env, patchmask_cfg, seg_keys=patchmask_seg_keys)
+                except Exception as exc:
+                    raise RuntimeError(
+                        "PatchMask online evaluation requires LIBERO observations with instance segmentation. "
+                        "Make sure eval-libero created SegmentationRenderEnv(camera_segmentations='instance') "
+                        "and your local LIBERO installation exposes agentview and wrist segmentation keys."
+                    ) from exc
             step = build_libero_step(
-                obs,
+                obs_for_policy,
                 task_description,
                 family=request.model,
                 task_id=task_id,
@@ -410,6 +444,41 @@ def resolve_knockout_config_for_eval(
     return config
 
 
+def resolve_patchmask_config_for_eval(
+    *,
+    variant: str | None,
+    mode: str | None,
+    mask_value: int = 0,
+    bg_ring_width: int = 8,
+    mosaic_block: int = 8,
+) -> dict[str, Any] | None:
+    """Build the compact PatchMask dict used by LIBERO online evaluation."""
+
+    variant_name = str(variant or "none")
+    mode_name = str(mode or "none")
+    if variant_name not in PATCHMASK_VARIANTS - {"custom"}:
+        raise ValueError(f"Unsupported LIBERO PatchMask variant: {variant_name}")
+    if mode_name not in PATCHMASK_MODES:
+        raise ValueError(f"Unsupported PatchMask mode: {mode_name}")
+    if variant_name == "none" and mode_name == "none":
+        return None
+    if variant_name == "none" or mode_name == "none":
+        raise ValueError("--patchmask-variant and --patchmask-mode must both be non-none, or both be none")
+    return {
+        "variant": variant_name,
+        "mode": mode_name,
+        "mask_value": int(mask_value),
+        "bg_ring_width": int(bg_ring_width),
+        "mosaic_block": int(mosaic_block),
+    }
+
+
+def setting_name_from_patchmask(patchmask_config: dict[str, Any] | None) -> str:
+    if not patchmask_config:
+        return "baseline"
+    return f"patchmask_{patchmask_config['variant']}_{patchmask_config['mode']}"
+
+
 def setting_name_from_knockout(knockout_config: dict[str, Any] | None) -> str:
     if not knockout_config:
         return "baseline"
@@ -454,11 +523,25 @@ def _result_payload(
         "model_path": request.model_path,
         "data_root": request.data_root,
         "knockout_config": request.knockout_config,
+        "patchmask_config": request.patchmask_config,
         "trials": trials,
         "created_at_unix": int(time.time()),
     }
     _attach_layer_metadata(payload, request.knockout_config)
     return payload
+
+
+def _patchmask_runtime_config(config: dict[str, Any] | None) -> ImageMaskEvalConfig | None:
+    if not config:
+        return None
+    cfg = ImageMaskEvalConfig(
+        variant=str(config.get("variant", "none")),
+        mode=str(config.get("mode", "none")),
+        mask_value=int(config.get("mask_value", 0)),
+        bg_ring_width=int(config.get("bg_ring_width", 8)),
+        mosaic_block=int(config.get("mosaic_block", 8)),
+    )
+    return cfg if cfg.active() else None
 
 
 def _attach_layer_metadata(payload: dict[str, Any], knockout_config: dict[str, Any] | None) -> None:
@@ -496,7 +579,7 @@ def _default_result_name(request: LiberoEvalRequest, payload: dict[str, Any]) ->
     return f"{request.dataset}_{suffix}_{payload['success_rate']:.4f}.json"
 
 
-def _import_libero_stack() -> tuple[Any, Any, Any]:
+def _import_libero_stack() -> tuple[Any, Any, Any, Any]:
     try:
         from libero import benchmark, get_libero_path
         from libero.envs import OffScreenRenderEnv
@@ -505,7 +588,11 @@ def _import_libero_stack() -> tuple[Any, Any, Any]:
             "Real LIBERO evaluation requires a local LIBERO installation. "
             "Use --dry-run to validate commands or --mock-env for CI smoke tests."
         ) from exc
-    return benchmark, OffScreenRenderEnv, get_libero_path
+    try:
+        from libero.envs import SegmentationRenderEnv
+    except ImportError:
+        SegmentationRenderEnv = None
+    return benchmark, OffScreenRenderEnv, SegmentationRenderEnv, get_libero_path
 
 
 def _prepare_libero_runtime(request: LiberoEvalRequest) -> None:
@@ -547,14 +634,35 @@ def _prepare_libero_runtime(request: LiberoEvalRequest) -> None:
         yaml.safe_dump(config, handle)
 
 
-def _make_libero_env(task: Any, OffScreenRenderEnv: Any, get_libero_path: Any, *, seed: int) -> tuple[Any, str]:
+def _make_libero_env(
+    task: Any,
+    OffScreenRenderEnv: Any,
+    SegmentationRenderEnv: Any,
+    get_libero_path: Any,
+    *,
+    seed: int,
+    use_instance_segmentation: bool = False,
+) -> tuple[Any, str]:
     task_description = task.language
     task_bddl_file = os.path.join(get_libero_path("bddl_files"), task.problem_folder, task.bddl_file)
-    env = OffScreenRenderEnv(
-        bddl_file_name=task_bddl_file,
-        camera_heights=256,
-        camera_widths=256,
-    )
+    env_kwargs = {
+        "bddl_file_name": task_bddl_file,
+        "camera_heights": 256,
+        "camera_widths": 256,
+    }
+    if use_instance_segmentation:
+        if SegmentationRenderEnv is not None:
+            env = SegmentationRenderEnv(**env_kwargs, camera_segmentations="instance")
+        else:
+            try:
+                env = OffScreenRenderEnv(**env_kwargs, camera_segmentations="instance")
+            except TypeError as exc:
+                raise RuntimeError(
+                    "PatchMask online evaluation requires a LIBERO SegmentationRenderEnv "
+                    "or an OffScreenRenderEnv that accepts camera_segmentations='instance'."
+                ) from exc
+    else:
+        env = OffScreenRenderEnv(**env_kwargs)
     env.seed(seed)
     return env, task_description
 
