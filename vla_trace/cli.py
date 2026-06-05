@@ -96,6 +96,48 @@ def _cmd_collect_repr(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_collect_repr_stages(args: argparse.Namespace) -> int:
+    from vla_trace.representations.stages import collect_representation_stages_from_config
+
+    cfg = load_config(args.config) if args.config else {}
+    if args.model:
+        model = normalize_model(args.model)
+        cfg["model"] = model_config_path(model)
+        cfg["family"] = model
+        cfg.setdefault("token_layout", dict(DEFAULT_TOKEN_LAYOUTS[model]))
+    if args.dataset:
+        dataset = normalize_dataset(args.dataset)
+        cfg["benchmark"] = dataset_config_path(dataset)
+    if args.manifest:
+        cfg["manifest_path"] = args.manifest
+    if args.adapter:
+        cfg["adapter"] = args.adapter
+    if args.hidden_state_root:
+        cfg["hidden_state_root"] = args.hidden_state_root
+    if args.bank_root:
+        cfg["bank_root"] = args.bank_root
+    if args.max_samples is not None:
+        cfg["max_samples"] = args.max_samples
+    if args.token_group:
+        cfg["token_groups"] = _parse_token_group_pairs(args.token_group)
+    _apply_user_path_overrides(cfg, args)
+    stages = _merge_stage_cli_overrides(
+        cfg.get("stages"),
+        stage_entries=args.stage or [],
+        hidden_entries=args.hidden_state_dir or [],
+        bank_entries=args.bank_output or [],
+    )
+    if stages:
+        cfg["stages"] = stages
+    result = collect_representation_stages_from_config(cfg, dry_run=args.dry_run)
+    if args.output:
+        write_json(args.output, result)
+        print(str(args.output))
+    else:
+        _print_json(result)
+    return 0
+
+
 def _cmd_export_libero_manifest(args: argparse.Namespace) -> int:
     from vla_trace.representations.manifest import export_libero_manifest
 
@@ -659,6 +701,27 @@ def build_parser() -> argparse.ArgumentParser:
     collect_p.add_argument("--output", help="Optional collection report JSON")
     collect_p.set_defaults(func=_cmd_collect_repr)
 
+    collect_stages_p = sub.add_parser("collect-repr-stages", help="Plan or collect C0/C1/C2 representation banks")
+    collect_stages_p.add_argument("config", nargs="?", help="Optional YAML/JSON stage collection config")
+    collect_stages_p.add_argument("--model", metavar="{OpenVLA,pi0.5}", help=MODEL_HELP)
+    collect_stages_p.add_argument("--dataset", metavar="{libero_10,libero_goal,libero_object,libero_spatial}", help=DATASET_HELP)
+    collect_stages_p.add_argument("--model-config", help="Path to a user-provided model config YAML/JSON")
+    collect_stages_p.add_argument("--benchmark-config", help="Path to a user-provided benchmark config YAML/JSON")
+    collect_stages_p.add_argument("--model-path", help="Shared checkpoint/model directory recorded in configs")
+    collect_stages_p.add_argument("--data-root", help="User-provided dataset root passed to adapters")
+    collect_stages_p.add_argument("--manifest", help="Shared manifest.jsonl for all checkpoint stages")
+    collect_stages_p.add_argument("--adapter", help="Optional adapter factory import path")
+    collect_stages_p.add_argument("--hidden-state-root", help="Root containing C0_hidden_states, C1_hidden_states, ...")
+    collect_stages_p.add_argument("--bank-root", help="Output root for C0_bank.npz, C1_bank.npz, ...")
+    collect_stages_p.add_argument("--stage", action="append", default=[], metavar="NAME=MODEL_PATH", help="Stage checkpoint path, e.g. C0=checkpoints/base")
+    collect_stages_p.add_argument("--hidden-state-dir", action="append", default=[], metavar="NAME=DIR", help="Stage hidden-state dir, e.g. C1=artifacts/C1_hidden_states")
+    collect_stages_p.add_argument("--bank-output", action="append", default=[], metavar="NAME=PATH", help="Stage bank output, e.g. C2=artifacts/C2_bank.npz")
+    collect_stages_p.add_argument("--token-group", action="append", default=[], metavar="NAME=START:STOP", help="Pooling group, e.g. vision_pooled=1:257")
+    collect_stages_p.add_argument("--max-samples", type=int)
+    collect_stages_p.add_argument("--dry-run", action="store_true", help="Only write the resolved C0/C1/C2 collection plan")
+    collect_stages_p.add_argument("--output", help="Optional plan/report JSON")
+    collect_stages_p.set_defaults(func=_cmd_collect_repr_stages)
+
     convert_bank_p = sub.add_parser("convert-bank", help="Convert legacy or JSON/NPZ representation banks to public JSON/NPZ")
     convert_bank_p.add_argument("--input", required=True, help="Input bank .pt/.json/.npz")
     convert_bank_p.add_argument("--output", required=True, help="Output bank .json or .npz")
@@ -1105,6 +1168,26 @@ def _parse_token_group_pairs(entries: list[str]) -> dict[str, str]:
             raise ValueError(f"Expected NAME=START:STOP for --token-group, got {entry!r}")
         groups[key] = value
     return groups
+
+
+def _merge_stage_cli_overrides(
+    base: Any,
+    *,
+    stage_entries: list[str],
+    hidden_entries: list[str],
+    bank_entries: list[str],
+) -> dict[str, dict[str, Any]]:
+    if isinstance(base, list):
+        stages = {str(item["name"]): dict(item) for item in base}
+    else:
+        stages = {str(name): dict(spec or {}) for name, spec in dict(base or {}).items()}
+    for name, model_path in _parse_key_value_pairs(stage_entries).items():
+        stages.setdefault(name, {})["model_path"] = model_path
+    for name, hidden_dir in _parse_key_value_pairs(hidden_entries).items():
+        stages.setdefault(name, {})["hidden_state_dir"] = hidden_dir
+    for name, bank_output in _parse_key_value_pairs(bank_entries).items():
+        stages.setdefault(name, {})["output_path"] = bank_output
+    return stages
 
 
 def _apply_user_path_overrides(cfg: dict[str, Any], args: argparse.Namespace) -> None:

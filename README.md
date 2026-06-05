@@ -367,8 +367,21 @@ vla-trace cka --model pi0.5 --dataset libero_object --print-config
 The Stage 1 workflow is:
 
 ```text
-LIBERO/custom samples -> manifest.jsonl -> hidden states -> representation bank -> CKA report -> CKA figures
+LIBERO/custom samples -> manifest.jsonl -> hidden states for each checkpoint stage -> representation banks -> CKA report -> CKA figures
 ```
+
+`C0`, `C1`, and `C2` are checkpoint-stage labels supplied by the user. They are
+not bundled in this repository and are not inferred from LIBERO:
+
+| Stage | Meaning in the VLA-Trace method | User-provided artifact |
+| --- | --- | --- |
+| `C0` | pretrained VLM or action-free base model | hidden states from that checkpoint |
+| `C1` | action-pretrained VLA checkpoint | hidden states from that checkpoint |
+| `C2` | LIBERO/task-finetuned VLA checkpoint | hidden states from that checkpoint |
+
+If you only have one checkpoint, collect one bank and run a single-checkpoint
+cross-modal profile. Checkpoint-drift CKA requires at least two comparable
+banks, and the three-stage `C0 -> C1 -> C2` analysis requires all three.
 
 Export a LIBERO RLDS manifest when your local environment has a compatible
 LIBERO dataset loader:
@@ -394,6 +407,69 @@ bank, each row can either contain `hidden_states_path`, or you can pass
 can pass an adapter factory with `--adapter package.module:create_adapter`.
 The hidden-state artifact must expose layers as `hidden_states=[layers,tokens,dim]`
 or keys such as `layer_0`, `layer_1`.
+
+Plan the full OpenVLA/LIBERO-10 stage collection before running model code:
+
+```bash
+vla-trace collect-repr-stages \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --manifest artifacts/libero_10_cka_samples/manifest.jsonl \
+  --stage C0=checkpoints/openvla_base \
+  --stage C1=checkpoints/openvla_pretrained_vla \
+  --stage C2=checkpoints/openvla_libero10_finetuned \
+  --hidden-state-root artifacts/openvla/libero_10 \
+  --bank-root artifacts/openvla/libero_10_banks \
+  --token-group vision_pooled=1:257 \
+  --token-group text_pooled=257:289 \
+  --token-group joint_pooled=1:289 \
+  --dry-run \
+  --output runs/openvla_libero10_stage_plan.json
+```
+
+The plan reports one job per stage, the expected hidden-state directory
+(`C0_hidden_states`, `C1_hidden_states`, `C2_hidden_states` under
+`--hidden-state-root`), the bank output path, and the exact `collect-repr`
+command for each stage. `configured=true` means the required fields are present;
+`path_warnings` tells you which local paths still need to be created or
+provided before real collection.
+
+After your adapter or local model script has exported the hidden-state files,
+collect all three banks in one command:
+
+```bash
+vla-trace collect-repr-stages \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --manifest artifacts/libero_10_cka_samples/manifest.jsonl \
+  --hidden-state-root artifacts/openvla/libero_10 \
+  --bank-root artifacts/openvla/libero_10_banks \
+  --token-group vision_pooled=1:257 \
+  --token-group text_pooled=257:289 \
+  --token-group joint_pooled=1:289 \
+  --output runs/openvla_libero10_stage_collect.json
+```
+
+Or let VLA-Trace call your extractor adapter for each stage:
+
+```bash
+vla-trace collect-repr-stages \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --manifest artifacts/libero_10_cka_samples/manifest.jsonl \
+  --adapter my_openvla_adapter:create_adapter \
+  --stage C0=checkpoints/openvla_base \
+  --stage C1=checkpoints/openvla_pretrained_vla \
+  --stage C2=checkpoints/openvla_libero10_finetuned \
+  --bank-root artifacts/openvla/libero_10_banks \
+  --token-group vision_pooled=1:257 \
+  --token-group text_pooled=257:289 \
+  --token-group joint_pooled=1:289
+```
+
+The adapter template at `examples/adapters/openvla_representation_adapter.py`
+shows the required `create_adapter(...)->adapter` and
+`extract_hidden_states(row)` interface for OpenVLA/OpenVLA-OFT users.
 
 Collect a representation bank from exported hidden states:
 
@@ -427,6 +503,29 @@ vla-trace collect-repr configs/experiments/openvla_libero_repr.yaml \
 The adapter object should implement `extract_hidden_states(row)` and return a
 mapping from layer index to `[tokens, hidden_dim]` arrays. Optional `load()` is
 called once before collection.
+
+For OpenVLA-OFT, use the same OpenVLA-style Stage 1 flow with a custom adapter
+that loads the OFT checkpoint and exports the same layer-token hidden-state
+schema:
+
+```bash
+vla-trace collect-repr-stages \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --manifest artifacts/libero_10_cka_samples/manifest.jsonl \
+  --adapter my_oft_adapter:create_adapter \
+  --stage C0=checkpoints/openvla_base \
+  --stage C1=checkpoints/openvla_pretrained_vla \
+  --stage C2=checkpoints/openvla_oft_libero10 \
+  --bank-root artifacts/openvla_oft/libero_10_banks \
+  --token-group vision_pooled=1:257 \
+  --token-group text_pooled=257:289 \
+  --token-group joint_pooled=1:289
+```
+
+Use `model=OpenVLA` for collection because OFT follows an OpenVLA-style token
+layout. Use explicit `--token-group` spans if your OFT implementation changes
+prompt, proprioception, or action-token packing.
 
 If you already have legacy research banks, convert them to the public schema:
 

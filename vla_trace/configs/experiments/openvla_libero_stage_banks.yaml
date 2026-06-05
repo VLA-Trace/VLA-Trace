@@ -1,0 +1,20 @@
+model: configs/models/openvla.yaml
+family: openvla
+benchmark: configs/benchmarks/libero_10.yaml
+manifest_path: artifacts/libero_10_cka_samples/manifest.jsonl
+hidden_state_root: artifacts/openvla/libero_10
+bank_root: artifacts/openvla/libero_10_banks
+token_groups:
+  vision_pooled: 1:257
+  text_pooled: 257:289
+  joint_pooled: 1:289
+stages:
+  C0:
+    description: pretrained VLM or action-free base model
+    model_path: checkpoints/openvla_base
+  C1:
+    description: action-pretrained VLA checkpoint
+    model_path: checkpoints/openvla_pretrained_vla
+  C2:
+    description: LIBERO-10 finetuned checkpoint
+    model_path: checkpoints/openvla_libero10_finetuned
