@@ -967,21 +967,6 @@ inputs, and generates figures. For LIBERO PatchMask, `eval-libero` also
 provides the online rollout loop that edits simulator observations before
 OpenVLA/pi0.5 inference.
 
-Manuscript-method coverage is intentionally split between portable public tools and
-adapter-backed collection:
-
-| Manuscript component | Public command/API | Status |
-| --- | --- | --- |
-| Fig. 2 CKA panels and drift summaries | `collect-repr`, `cka`, `plot-cka-publication` | implemented from public banks/reports |
-| Fig. 4/8/10 knockout line grids | `knockout`, `knockout-sweep`, `eval-libero`, `plot-knockout-line` | implemented for masks/manifests/adapter-backed LIBERO rollout logs/plots |
-| Fig. 5/22 attention IoU and mass | `attention-metrics`, `plot-attention` | implemented from exported attention/mask artifacts |
-| Fig. 17 action-to-image | `attention-export`, `attention-overlay` | implemented as artifact viewer; collection is adapter-backed |
-| Fig. 18/19 token-wise text-to-image | `attention-export`, `plot-attention-map`, `attention-overlay` | implemented as generic tensor/overlay plotting |
-| Fig. 20 action-to-text | `attention-export`, `plot-attention-map` | implemented as bar/line/heatmap plotting |
-| Fig. 21 layer-wise modality attention | `attention-export`, `plot-attention-map` | implemented from `layer_modality_*` arrays |
-| PatchMask perturbation tables | `patchmask`, `patchmask-sweep`, `eval-libero`, `apply_image_mask_to_obs_inplace`, `plot-knockout` | implemented for offline perturbations, LIBERO online masking, sweep manifests, result schema, and plots |
-| Input editing | `input-edit` | manifest and result-summary layer; environment/image edit execution is user-supplied |
-
 #### Attention Data Processing
 
 A normalized attention trace directory should contain:
@@ -1556,24 +1541,6 @@ the manuscript's LIBERO-10 task titles more closely.
 These visualization modules are adapted from the manuscript plotting code, but
 all manuscript-specific path roots, export hooks, and fixed experiment
 inventories have been removed.
-
-### Migrating From VLM4VLA
-
-The research codebase used workspace-local absolute paths and shell wrappers.
-The public toolkit keeps those values outside the repository.
-
-| VLM4VLA concept | VLA-Trace replacement |
-| --- | --- |
-| workspace-local root constants | use the repo root directly |
-| `HF_HOME`, conda env, cluster scripts | keep outside the repo |
-| checkpoint paths inside JSON configs | `--model-path` or `--model-config` |
-| dataset roots inside JSON configs | `--data-root` or `--benchmark-config` |
-| OpenVLA / pi0.5 selection inside shell scripts | `--model OpenVLA` or `--model pi0.5` |
-| LIBERO suite selection inside shell scripts | `--dataset libero_10`, `libero_goal`, `libero_object`, `libero_spatial` |
-
-If you already have a local checkpoint or dataset root, pass it at runtime. The
-resolved config and output artifacts record the supplied paths verbatim for
-reproducibility, but repository defaults stay path-clean.
 
 ## 🔗 Links
 
