@@ -586,7 +586,7 @@ def _import_libero_stack() -> tuple[Any, Any, Any, Any]:
     except ImportError as exc:
         raise ImportError(
             "Real LIBERO evaluation requires a local LIBERO installation. "
-            "Use --dry-run to validate commands or --mock-env for CI smoke tests."
+            "Use --dry-run to validate commands or --mock-env for deterministic local checks."
         ) from exc
     try:
         from libero.envs import SegmentationRenderEnv

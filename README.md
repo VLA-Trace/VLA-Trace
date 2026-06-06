@@ -2,7 +2,7 @@
 
 ## 🧭 Overview
 
-> This repository hosts the public alpha implementation of **VLA-Trace**, a diagnostic framework for understanding how Vision-Language-Action models convert multimodal knowledge into embodied control.
+> This repository hosts the official public implementation of **VLA-Trace**, a diagnostic framework for understanding how Vision-Language-Action models convert multimodal knowledge into embodied control.
 
 **VLA-Trace** studies VLA models as evolving, controllable systems rather than opaque end-to-end policies. It builds a progressive evidence chain from **representation dynamics**, to **causal control attribution**, to **closed-loop behavioral manifestation**.
 
@@ -14,9 +14,8 @@ Modern VLA models inherit powerful vision-language priors, but policy learning c
 
 ## 🗞️ News
 
-- **[2026-06-03]** 💻 Stage 1 representation tracing, Stage 2 attention-knockout tooling, Stage 3 offline behavior probes, artifact-driven visualization commands, configs, docs, and smoke tests are available.
-- **[2026-06-04]** 📄 arXiv citation added: [arXiv:2605.30117](https://arxiv.org/abs/2605.30117).
-- **[Coming Soon]** 🌐 Project page, visualizations, and result artifacts will be released.
+- **[2026-06-06]** 💻 VLA-Trace code repository released.
+- **[2026-06-06]** 🌐 VLA-Trace project page released.
 
 ## ✨ Highlights
 
@@ -24,7 +23,7 @@ Modern VLA models inherit powerful vision-language priors, but policy learning c
 - 🔌 **Causal control attribution:** use attention knockout to test which modality routes are necessary for action decoding.
 - 🧪 **Behavior-level validation:** connect internal pathways to rollout attention, visual shortcut dependence, and semantic editing behavior.
 - 📊 **Architecture-aware findings:** compare pi-style and OpenVLA-style policies to reveal different adaptation and routing patterns.
-- 🛠️ **Release-oriented toolkit:** the current alpha includes saved-bank CKA, knockout-mask tooling, Stage 3 behavior probes, and plotting commands for CKA reports, knockout evaluation JSONs, and attention summaries.
+- 🛠️ **Release-oriented toolkit:** VLA-Trace includes saved-bank CKA, knockout-mask tooling, Stage 3 behavior probes, and plotting commands for CKA reports, knockout evaluation JSONs, and attention summaries.
 
 ## 🧩 Diagnostic Pipeline
 
@@ -59,14 +58,9 @@ To test whether multimodal information is merely represented or actually used, V
 - **Generation knockout** blocks action-token access to image or instruction tokens during decoding.
 - **Layer-wise knockout** localizes whether action-critical information flows through narrow bottlenecks or distributed regions.
 
-This turns representation analysis into a causal question: *which pathway must remain open for the robot to act successfully?*
-
 ### 🧪 Stage 3: Behavioral Probes of Grounding and Shortcut Dependence
 
-In the full manuscript pipeline, VLA-Trace then moves from internal mechanisms to
-closed-loop behavior. The public alpha provides offline artifact schemas,
-metrics, masking utilities, edit manifests, and visualization commands for
-these probes; turnkey online rollout collectors remain adapter-backed:
+VLA-Trace moves from internal mechanisms to closed-loop behavior. The public toolkit provides artifact schemas, metrics, masking utilities, LIBERO PatchMask rollout support, edit manifests, and visualization commands for these probes:
 
 - **Attention IoU:** checks whether action attention overlaps with objects, robot regions, and robot-object interaction regions.
 - **Temporal attention analysis:** tests whether attention shifts with multi-step task progress.
@@ -75,11 +69,7 @@ these probes; turnkey online rollout collectors remain adapter-backed:
 
 ## 📊 Key Findings
 
-The manuscript reports the following findings; the current public alpha exposes the
-analysis cores and artifact schemas needed to apply the same methods to your
-own checkpoints, exported representation banks, rollout traces, and evaluation
-logs. It does not bundle private checkpoints, datasets, or result
-logs.
+The manuscript reports the following findings; this repository exposes the analysis cores and artifact schemas needed to apply the same methods to your own checkpoints, exported representation banks, rollout traces, and evaluation logs.
 
 - 🧬 **Different VLAs adapt different modalities.** pi0.5 shows more fluctuating cross-modal fusion and reorganizes textual representations into task-conditioned control features, while OpenVLA more strongly preserves text-pooled representations and mainly restructures visual/joint subspaces.
 - 🔌 **Action decoding follows architecture-specific routes.** pi0.5 is dominated by a concentrated visual-to-action pathway, whereas OpenVLA relies on both visual grounding and prompt-region access.
@@ -105,42 +95,6 @@ Benchmarks include:
 - **LIBERO-Goal:** goal-conditioned control.
 - **CALVIN, SimplerEnv-BridgeV2, and RoboTwin2.0:** broader validation across sequential control, real-to-sim transfer, and bimanual manipulation settings.
 
-## 🛠️ Repository Status
-
-Stage 1, Stage 2, LIBERO rollout entrypoints, and Stage 3 behavior tracing
-are available as a lightweight public alpha. Heavy model execution
-remains adapter-backed: users provide checkpoint paths, optional model
-dependencies, benchmark installation paths, and model-specific hooks locally.
-
-### Available Now
-
-- [x] 🧬 LIBERO manifest export, hidden-state-to-bank collection, saved-bank conversion, cross-modal CKA, and checkpoint-drift CKA
-- [x] 🧬 Matched-layer checkpoint-drift summaries for `vision_pooled`, `text_pooled`, and `joint_pooled`
-- [x] 📐 Token pooling helpers for `vision_pooled`, `text_pooled`, and `joint_pooled`
-- [x] 🔌 Public Stage 2 knockout specs, additive mask builders, text-scope selection, directional settings, prefill/generation combined settings, all-layer settings, and standard layer/window sweep manifests
-- [x] 🎮 `eval-libero` rollout CLI for OpenVLA/pi0.5 LIBERO inference, dry-run planning, mock smoke tests, custom policy adapters, VLM4VLA-compatible adapters, knockout-manifest execution, and PatchMask-manifest execution
-- [x] 📊 Visualization commands for CKA, knockout success curves, attention IoU summaries, generic attention maps, and overlays
-- [x] 🧪 Stage 3 attention localization metrics, attention overlay, LIBERO PatchMask online/runtime observation editing, offline PatchMask data generation, and input-edit manifests
-- [x] 🩺 `doctor` checks for local configs, custom model/data paths, representation banks, attention/mask artifacts, result JSONs, and input-edit manifests
-- [x] ⚙️ Model configs for pi0.5 and OpenVLA
-- [x] ⚙️ LIBERO benchmark configs for `libero_10`, `libero_goal`, `libero_object`, and `libero_spatial`
-- [x] 🧪 Offline unit and CLI smoke tests
-
-### Adapter Boundaries
-
-The open-source repository is a method/toolchain release. It provides the
-schemas, CLI tools, mask builders, metrics, and plotting code needed to run the
-manuscript analyses on your own traces. The `eval-libero` command provides the
-rollout loop and result schema; heavy model forwarding and model-internal
-attention-hook placement remain adapter responsibilities because each VLA
-codebase exposes those tensors differently.
-
-Community users can plug in custom models by exporting the documented
-representation banks, attention arrays, mask arrays, rollout success logs, and
-input-edit result logs, or by passing `--adapter-factory` to `eval-libero`. The
-core analysis and visualization code does not depend on private checkpoints or
-result directories.
-
 ## 🗂️ Repository Structure
 
 ```text
@@ -155,7 +109,7 @@ VLA-Trace/
 │   ├── behavior/            # Stage 3 behavior metrics, masks, and edits
 │   ├── visualization/       # Artifact-driven plotting commands
 │   └── io/                  # Config and artifact helpers
-├── tests/                   # Offline unit and smoke tests
+├── tests/                   # Unit and CLI regression tests
 ├── pyproject.toml
 └── README.md
 ```
@@ -373,11 +327,11 @@ LIBERO/custom samples -> manifest.jsonl -> hidden states for each checkpoint sta
 `C0`, `C1`, and `C2` are checkpoint-stage labels supplied by the user. They are
 not bundled in this repository and are not inferred from LIBERO:
 
-| Stage | Meaning in the VLA-Trace method | User-provided artifact |
-| --- | --- | --- |
+| Stage  | Meaning in the VLA-Trace method          | User-provided artifact             |
+| ------ | ---------------------------------------- | ---------------------------------- |
 | `C0` | pretrained VLM or action-free base model | hidden states from that checkpoint |
-| `C1` | action-pretrained VLA checkpoint | hidden states from that checkpoint |
-| `C2` | LIBERO/task-finetuned VLA checkpoint | hidden states from that checkpoint |
+| `C1` | action-pretrained VLA checkpoint         | hidden states from that checkpoint |
+| `C2` | LIBERO/task-finetuned VLA checkpoint     | hidden states from that checkpoint |
 
 If you only have one checkpoint, collect one bank and run a single-checkpoint
 cross-modal profile. Checkpoint-drift CKA requires at least two comparable
@@ -637,12 +591,12 @@ choose setting -> build/inspect knockout spec -> run LIBERO rollouts with that s
 
 Command roles:
 
-| Command | Role | Output |
-| --- | --- | --- |
-| `vla-trace knockout` | Build one blocking spec/mask for one setting | `mask.json` |
-| `vla-trace knockout-sweep` | Build many layer-wise/all-layer jobs | `sweep.json` |
-| `vla-trace eval-libero` | Run LIBERO with a single setting or sweep job | success-rate result JSONs |
-| `vla-trace plot-knockout-line` | Draw layer-wise vulnerability curves | PNG/PDF/SVG figures |
+| Command                          | Role                                          | Output                    |
+| -------------------------------- | --------------------------------------------- | ------------------------- |
+| `vla-trace knockout`           | Build one blocking spec/mask for one setting  | `mask.json`             |
+| `vla-trace knockout-sweep`     | Build many layer-wise/all-layer jobs          | `sweep.json`            |
+| `vla-trace eval-libero`        | Run LIBERO with a single setting or sweep job | success-rate result JSONs |
+| `vla-trace plot-knockout-line` | Draw layer-wise vulnerability curves          | PNG/PDF/SVG figures       |
 
 Print a resolved knockout config:
 
@@ -871,7 +825,7 @@ vla-trace eval-libero \
   --num-trials-per-task 5 \
   --output-dir runs/openvla_libero10_knockout_eval
 
-# Smoke-test the first two jobs without a simulator/model.
+# Run the first two jobs with the mock evaluator.
 vla-trace eval-libero \
   --model OpenVLA \
   --dataset libero_10 \
@@ -936,12 +890,12 @@ vla-trace eval-libero \
 `--text-scope` selects which text-side keys are blocked for `no_text` and
 `no_vl` settings:
 
-| Scope | Public convention |
-| --- | --- |
-| `instruction`, `semantic_instruction`, `exclude_newline` | instruction text tokens, excluding the final newline/suffix token |
-| `newline_only` | only the final text token, used as the public newline/suffix proxy |
-| `bos_newline` | optional prefix/BOS tokens plus the final newline/suffix token |
-| `all`, `full` | optional prefix/BOS tokens plus the full text span |
+| Scope                                                          | Public convention                                                  |
+| -------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `instruction`, `semantic_instruction`, `exclude_newline` | instruction text tokens, excluding the final newline/suffix token  |
+| `newline_only`                                               | only the final text token, used as the public newline/suffix proxy |
+| `bos_newline`                                                | optional prefix/BOS tokens plus the final newline/suffix token     |
+| `all`, `full`                                              | optional prefix/BOS tokens plus the full text span                 |
 
 Exact tokenizer offsets are adapter-specific. The public mask builder uses
 these conservative spans so OpenVLA/pi0.5-style users can choose semantic,
@@ -1196,13 +1150,13 @@ builds a mask for the requested component, edits `agentview_image` and
 
 Supported online LIBERO variants:
 
-| Variant | Component mask |
-| --- | --- |
-| `mask_target` | union of `env.obj_of_interest` task instances |
-| `mask_gripper` | simulator `gripper` instance |
-| `mask_robot` | full robot instance |
-| `mask_robot_exc_gripper` | robot mask minus the gripper id |
-| `mask_background` | inverse of all foreground simulator instances |
+| Variant                    | Component mask                                  |
+| -------------------------- | ----------------------------------------------- |
+| `mask_target`            | union of `env.obj_of_interest` task instances |
+| `mask_gripper`           | simulator `gripper` instance                  |
+| `mask_robot`             | full robot instance                             |
+| `mask_robot_exc_gripper` | robot mask minus the gripper id                 |
+| `mask_background`        | inverse of all foreground simulator instances   |
 
 Supported replacement modes are `black`, `background_fill`, and `mosaic`.
 Use `variant=none, mode=none` for the baseline. The same mask selection idea
@@ -1501,8 +1455,7 @@ vla-trace plot-cka-publication \
   --models pi0.5,OpenVLA
 ```
 
-Alignment reports can use either the VLA-Trace flat `profiles: C0/C1/C2 ->
-layer -> CKA` schema or the legacy `metrics.cka.baseline.mean/ci_low/ci_high`
+Alignment reports can use either the VLA-Trace flat `profiles: C0/C1/C2 -> layer -> CKA` schema or the legacy `metrics.cka.baseline.mean/ci_low/ci_high`
 schema. Zero-based VLA-Trace layer ids are accepted and displayed on the
 publication-style one-based layer axis. Drift reports can use VLA-Trace `matched_layer_summary`, legacy
 `targets.*.views.*.diag_cka`, or the Pi0.5 suite summary schema.
@@ -1544,15 +1497,10 @@ inventories have been removed.
 
 ## 🔗 Links
 
-The following links are placeholders and will be updated upon release:
-
-| Resource                 | Link        |
-| ------------------------ | ----------- |
-| 📄 arXiv                 | [arXiv:2605.30117](https://arxiv.org/abs/2605.30117) |
-| 🌐 Project Page          | Coming soon |
-| 💻 Code                  | This repository |
-| 📦 Artifacts             | Coming soon |
-| 📊 Results / Leaderboard | Coming soon |
+| Resource | Link                                                  |
+| -------- | ----------------------------------------------------- |
+| 📄 arXiv | [arXiv:2605.30117](https://arxiv.org/abs/2605.30117) |
+| 💻 Code  | [GitHub](https://github.com/VLA-Trace/VLA-Trace)      |
 
 ## 📄 Manuscript
 

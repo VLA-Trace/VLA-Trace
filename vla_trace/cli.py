@@ -937,9 +937,9 @@ def build_parser() -> argparse.ArgumentParser:
     eval_libero_p.add_argument("--patchmask-mosaic-block", "--image-mask-mosaic-block", dest="patchmask_mosaic_block", type=int)
     eval_libero_p.add_argument("--job-index", type=int, help="Run one manifest job by zero-based index")
     eval_libero_p.add_argument("--job-tag", help="Run one manifest job whose tag exactly matches this value")
-    eval_libero_p.add_argument("--max-jobs", type=int, help="Limit manifest jobs for smoke tests")
+    eval_libero_p.add_argument("--max-jobs", type=int, help="Limit manifest jobs for quick validation runs")
     eval_libero_p.add_argument("--dry-run", action="store_true", help="Write/print the planned jobs without importing model or LIBERO")
-    eval_libero_p.add_argument("--mock-env", action="store_true", help="Run a deterministic mock evaluation for CI smoke tests")
+    eval_libero_p.add_argument("--mock-env", action="store_true", help="Run a deterministic mock evaluation without loading LIBERO or a model")
     eval_libero_p.add_argument("--print-plan", action="store_true", help="Print resolved plan and exit")
     eval_libero_p.set_defaults(func=_cmd_eval_libero)
 

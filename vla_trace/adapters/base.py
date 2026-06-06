@@ -15,7 +15,7 @@ from vla_trace.io import load_config
 
 @dataclass(frozen=True)
 class TokenLayoutSpec:
-    """Static token-layout metadata for model-family docs and smoke checks."""
+    """Static token-layout metadata for model-family docs and validation checks."""
 
     visual_tokens: int
     action_tokens: int | None = None
