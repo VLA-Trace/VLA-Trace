@@ -1,5 +1,7 @@
 # 🔍 VLA-Trace: Diagnosing Vision-Language-Action Models through Representation and Behavior Tracing
 
+[Paper](https://arxiv.org/pdf/2605.30117) | [Project Page](https://vla-trace.github.io/)
+
 ## 🧭 Overview
 
 > This repository hosts the official public implementation of **VLA-Trace**, a diagnostic framework for understanding how Vision-Language-Action models convert multimodal knowledge into embodied control.
