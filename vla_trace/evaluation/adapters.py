@@ -208,6 +208,8 @@ def _call_predict_action(func: Callable[..., Any], step: LiberoStep) -> Any:
 
 
 def _to_action_array(action: Any) -> np.ndarray:
+    if isinstance(action, tuple) and action:
+        action = action[0]
     if hasattr(action, "detach"):
         action = action.detach().cpu().numpy()
     array = np.asarray(action, dtype=np.float32)

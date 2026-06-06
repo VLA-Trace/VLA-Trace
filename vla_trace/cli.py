@@ -444,6 +444,7 @@ def _build_eval_request(
         openpi_root=args.openpi_root or cfg.get("openpi_root"),
         openpi_config_name=args.openpi_config_name or cfg.get("openpi_config_name"),
         tokenizer_path=args.tokenizer_path or cfg.get("tokenizer_path"),
+        unnorm_key=args.unnorm_key or cfg.get("unnorm_key"),
         device=args.device or str(cfg.get("device", "cuda")),
         seed=args.seed if args.seed is not None else int(cfg.get("seed", 0)),
         task_ids=_parse_task_ids(args.task_ids if args.task_ids is not None else cfg.get("task_ids")),
@@ -884,6 +885,7 @@ def build_parser() -> argparse.ArgumentParser:
     eval_libero_p.add_argument("--openpi-root", help="Optional OpenPI root or src directory for pi0.5 adapters")
     eval_libero_p.add_argument("--openpi-config-name", help="OpenPI config name, e.g. pi05_libero")
     eval_libero_p.add_argument("--tokenizer-path", help="Optional tokenizer.model path for pi0.5/OpenPI adapters")
+    eval_libero_p.add_argument("--unnorm-key", help="Action unnormalization key passed to policy adapters")
     eval_libero_p.add_argument("--output-dir", help="Directory for result JSON and optional videos")
     eval_libero_p.add_argument("--output", help="Optional extra JSON report path")
     eval_libero_p.add_argument("--result-name", help="Result JSON filename under --output-dir")

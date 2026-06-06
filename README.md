@@ -103,6 +103,7 @@ Benchmarks include:
 VLA-Trace/
 ├── configs/                 # Model, benchmark, and probe configs
 ├── docs/                    # User documentation
+├── examples/                # Copyable adapters for community checkpoints
 ├── vla_trace/
 │   ├── adapters/            # Model metadata and adapter contracts
 │   ├── evaluation/          # LIBERO rollout runner and policy adapter bridge
@@ -226,41 +227,85 @@ one of these methods: `predict_action(step)`, `step(image, task)`, or
 should either consume `request.knockout_config` during construction or implement
 `configure_knockout(config)`.
 
-Using your own model:
+### Using Your Own Model
 
-- If your model follows the OpenVLA layout, call the tools with
-  `--model OpenVLA --model-path path/to/your/checkpoint`.
-- If your model follows the pi0.5 layout, call the tools with
-  `--model pi0.5 --model-path path/to/your/checkpoint`.
-- If you keep model metadata in your own YAML/JSON file, pass it with
-  `--model-config path/to/model.yaml`.
-- For Stage 1 CKA, the public core only needs saved representation banks, so a
-  custom model can be analyzed as long as you export banks in the documented
-  schema.
-- For Stage 2 knockout, the public core builds a validated sweep/mask artifact.
-  Running the intervention inside a custom model requires an adapter that maps
-  the artifact to that model's attention implementation.
-- For visualization, the plotting commands consume JSON/CSV artifacts. They do
-  not assume the original manuscript's result directories.
+Use the closest public family name and pass paths at runtime:
+`--model OpenVLA` for OpenVLA/OpenVLA-OFT-style checkpoints, or
+`--model pi0.5` for OpenPI/pi0.5-style checkpoints. No repository file needs to
+contain your local checkpoint or dataset root.
 
-Example with a user-provided OpenVLA-style checkpoint:
+There are two minimal integration paths:
+
+1. Export artifacts yourself, then run VLA-Trace analysis commands. Stage 1
+   needs representation banks; Stage 2 needs rollout result JSONs generated
+   under VLA-Trace knockout settings; Stage 3 needs attention, mask, PatchMask,
+   or edit artifacts.
+2. Let VLA-Trace call your model through small adapters. Stage 1 uses
+   `--adapter package.module:create_adapter` with
+   `extract_hidden_states(row)`. LIBERO rollout probes use
+   `--adapter-factory package.module:create_policy` with
+   `predict_action(step)`.
+
+OpenVLA-OFT can be used as an OpenVLA-style model. Keep the OFT checkout outside
+this repository and expose it only at runtime:
 
 ```bash
-vla-trace cka --model OpenVLA --dataset libero_10 \
-  --model-path checkpoints/my_openvla \
-  --data-root datasets/LIBERO \
-  --bank C0=artifacts/my_openvla/c0_bank.json \
-  --bank C1=artifacts/my_openvla/c1_bank.json \
-  --output-dir runs/my_openvla_libero_10_cka
+export PYTHONPATH=third_party/openvla-oft:$PYTHONPATH
 
-vla-trace knockout --model OpenVLA --dataset libero_10 \
-  --model-path checkpoints/my_openvla \
+vla-trace collect-repr-stages \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --manifest artifacts/libero_10_cka_samples/manifest.jsonl \
+  --adapter my_oft_repr:create_adapter \
+  --stage C2=checkpoints/openvla_oft_libero10 \
+  --bank-root artifacts/openvla_oft/libero_10_banks \
+  --token-group vision_pooled=1:257 \
+  --token-group text_pooled=257:289 \
+  --token-group joint_pooled=1:289
+
+vla-trace cka --model OpenVLA --dataset libero_10 \
+  --analysis cross_modal \
+  --layerwise \
+  --bank C2=artifacts/openvla_oft/libero_10_banks/C2_bank.npz \
+  --output-dir runs/openvla_oft_libero10_cka
+
+vla-trace eval-libero \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --model-path checkpoints/openvla_oft_libero10 \
   --data-root datasets/LIBERO \
+  --adapter-factory examples.adapters.openvla_oft_policy_adapter:create_policy \
+  --unnorm-key libero_10_no_noops \
+  --center-crop \
+  --task-ids 0 \
+  --num-trials-per-task 20 \
+  --output-dir runs/openvla_oft_libero10_eval
+```
+
+For OpenVLA-OFT Stage 2 knockout, add the desired knockout flags to
+`eval-libero`:
+
+```bash
+vla-trace eval-libero \
+  --model OpenVLA \
+  --dataset libero_10 \
+  --model-path checkpoints/openvla_oft_libero10 \
+  --data-root datasets/LIBERO \
+  --adapter-factory examples.adapters.openvla_oft_policy_adapter:create_policy \
+  --unnorm-key libero_10_no_noops \
   --phase generation \
   --mode no_image \
-  --layers 0,8,16,24,31 \
-  --output runs/my_openvla_libero_10_knockout/mask.json
+  --layers all \
+  --output-dir runs/openvla_oft_libero10_generation_no_image
 ```
+
+If your OpenVLA-OFT branch changes image count, proprioception, action head, or
+attention-hook names, copy
+`examples/adapters/openvla_oft_policy_adapter.py` into your own project and
+edit only that adapter. The example adapter forwards knockout settings when the
+model exposes `configure_knockout` or `set_knockout_config`; otherwise add that
+hook in your copied adapter. If token packing differs, keep `--model OpenVLA`
+but override the Stage 1 `--token-group` spans.
 
 Inspect a model config:
 
@@ -460,28 +505,11 @@ The adapter object should implement `extract_hidden_states(row)` and return a
 mapping from layer index to `[tokens, hidden_dim]` arrays. Optional `load()` is
 called once before collection.
 
-For OpenVLA-OFT, use the same OpenVLA-style Stage 1 flow with a custom adapter
-that loads the OFT checkpoint and exports the same layer-token hidden-state
-schema:
-
-```bash
-vla-trace collect-repr-stages \
-  --model OpenVLA \
-  --dataset libero_10 \
-  --manifest artifacts/libero_10_cka_samples/manifest.jsonl \
-  --adapter my_oft_adapter:create_adapter \
-  --stage C0=checkpoints/openvla_base \
-  --stage C1=checkpoints/openvla_pretrained_vla \
-  --stage C2=checkpoints/openvla_oft_libero10 \
-  --bank-root artifacts/openvla_oft/libero_10_banks \
-  --token-group vision_pooled=1:257 \
-  --token-group text_pooled=257:289 \
-  --token-group joint_pooled=1:289
-```
-
-Use `model=OpenVLA` for collection because OFT follows an OpenVLA-style token
-layout. Use explicit `--token-group` spans if your OFT implementation changes
-prompt, proprioception, or action-token packing.
+For OpenVLA-OFT, use `--model OpenVLA` and the adapter path shown in
+**Using Your Own Model**. The only Stage 1 requirement is that your adapter or
+export script writes the same layer-token hidden-state schema. If your OFT
+implementation changes prompt, proprioception, or action-token packing,
+override the `--token-group` spans.
 
 If you already have legacy research banks, convert them to the public schema:
 

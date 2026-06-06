@@ -40,7 +40,7 @@ vla-trace = "vla_trace.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["vla_trace*"]
+include = ["vla_trace*", "examples*"]
 
 [tool.setuptools.package-data]
 vla_trace = ["configs/**/*.yaml"]

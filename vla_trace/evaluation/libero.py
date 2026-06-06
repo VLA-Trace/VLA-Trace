@@ -55,6 +55,7 @@ class LiberoEvalRequest:
     openpi_root: str | None = None
     openpi_config_name: str | None = None
     tokenizer_path: str | None = None
+    unnorm_key: str | None = None
     device: str = "cuda"
     seed: int = 0
     task_ids: tuple[int, ...] = ()
@@ -129,6 +130,7 @@ def build_libero_eval_plan(request: LiberoEvalRequest) -> dict[str, Any]:
         "adapter_factory": request.adapter_factory,
         "vlm4vla_root": request.vlm4vla_root,
         "openpi_config_name": request.openpi_config_name,
+        "unnorm_key": request.unnorm_key,
         "knockout_config": request.knockout_config,
         "patchmask_config": request.patchmask_config,
         "requires_instance_segmentation": bool(_patchmask_runtime_config(request.patchmask_config)),
@@ -195,6 +197,7 @@ def _run_real_libero_eval(request: LiberoEvalRequest, plan: dict[str, Any]) -> d
             openpi_root=request.openpi_root,
             tokenizer_path=request.tokenizer_path,
             vlm4vla_root=request.vlm4vla_root,
+            unnorm_key=request.unnorm_key,
             use_openvla_prompt=request.use_openvla_prompt,
             single_unnorm=request.single_unnorm,
             knockout_config=request.knockout_config,

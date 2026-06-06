@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from vla_trace.cli import main
+from vla_trace.evaluation.adapters import _to_action_array
 from vla_trace.visualization.knockout import collect_knockout_results
 
 
@@ -35,6 +36,34 @@ def test_eval_libero_print_plan_from_public_config(capsys):
     assert payload["dataset"] == "libero_goal"
     assert payload["test_num"] == 4
     assert len(payload["jobs"]) == 4
+
+
+def test_eval_libero_plan_records_unnorm_key(capsys):
+    assert (
+        main(
+            [
+                "eval-libero",
+                "--model",
+                "OpenVLA",
+                "--dataset",
+                "libero_10",
+                "--unnorm-key",
+                "libero_10_no_noops",
+                "--dry-run",
+                "--print-plan",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["unnorm_key"] == "libero_10_no_noops"
+
+
+def test_action_tuple_returns_first_payload():
+    action = _to_action_array(([1.0, 2.0, 3.0], {"hidden_states": "ignored"}))
+
+    assert action.tolist() == [1.0, 2.0, 3.0]
 
 
 def test_eval_libero_mock_result_is_plot_compatible(tmp_path):
