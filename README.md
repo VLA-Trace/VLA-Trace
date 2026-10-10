@@ -1,4 +1,4 @@
-# 🔍 VLA-Trace: Diagnosing Vision-Language-Action Models through Representation and Behavior Tracing
+# 🔍 [EMNLP2026] VLA-Trace: Diagnosing Vision-Language-Action Models through Representation and Behavior Tracing
 
 [Paper](https://arxiv.org/pdf/2605.30117) | [Project Page](https://vla-trace.github.io/)
 
@@ -16,6 +16,7 @@ Modern VLA models inherit powerful vision-language priors, but policy learning c
 
 ## 🗞️ News
 
+- **[2026-08-21]** 🎉 VLA-Trace was accepted by EMNLP 2026 main conference.
 - **[2026-06-06]** 💻 VLA-Trace code repository released.
 - **[2026-06-06]** 🌐 VLA-Trace project page released.
 
