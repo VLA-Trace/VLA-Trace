@@ -1550,9 +1550,12 @@ If you find **VLA-Trace** useful, please consider citing our work:
 }
 ```
 
-## 📬 Contact
+## 📬 Contact With Us
 
 For questions, collaborations, or release updates, please open an issue or contact the authors after the repository is public.
+
+Email contact: {haoyuan.shi, xiancong.ren}@x-humanoid.com
+
 
 ## 🙏 Acknowledgements
 
